@@ -3,6 +3,7 @@ package hkgclimate.app;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 import hkgclimate.core.ClimateCore;
@@ -18,6 +19,7 @@ public class ClimateService extends Service {
     private ClimateCore core;
     private CarLink car;
     private PageLinkBinder binder;
+    private PageListKeeper keeper;
     // held here: SharedPreferences keeps only a weak reference to its listeners
     private final SharedPreferences.OnSharedPreferenceChangeListener prefListener =
             new SharedPreferences.OnSharedPreferenceChangeListener() {
@@ -25,6 +27,13 @@ public class ClimateService extends Service {
                 public void onSharedPreferenceChanged(SharedPreferences sp, String key) {
                     if (core != null && (key == null || Prefs.KEY_SWITCH_TEMP_F.equals(key))) {
                         core.setSwitchTempF(prefs.getSwitchTempF());
+                    }
+                    if (keeper != null && (key == null || Prefs.KEY_PAGE_ENABLED.equals(key))) {
+                        try {
+                            keeper.setEnabled(prefs.isPageEnabled());
+                        } catch (Throwable t) {
+                            Log.w(TAG, "updating the page lists failed", t);
+                        }
                     }
                 }
             };
@@ -36,15 +45,33 @@ public class ClimateService extends Service {
             prefs = new Prefs(this);
             core = new ClimateCore(new TestModeCommander(), prefs.getSwitchTempF());
             car = new CarLink(this, core);
-            binder = new PageLinkBinder(core, car);
+            binder = new PageLinkBinder(core, new PageLinkBinder.DebugSource() {
+                @Override public Bundle debug() {
+                    Bundle d = car.debug();
+                    PageListKeeper k = keeper;
+                    d.putString(PageStates.D_PAGE_LIST_ERROR, k == null ? null : k.lastError());
+                    return d;
+                }
+            });
             car.setOnDebugChange(new Runnable() {
                 @Override public void run() { binder.onDebugChanged(); }
             });
             prefs.register(prefListener);
-            // Task 6: create the PageListKeeper here (it reads prefs.isPageEnabled()).
             car.start();
         } catch (Throwable t) {
             Log.e(TAG, "climate service failed to start", t);
+        }
+        // its own try: the page lists must not depend on the car link coming up, nor the reverse
+        try {
+            keeper = new PageListKeeper(this);
+            keeper.setOnChange(new Runnable() {
+                @Override public void run() {
+                    if (binder != null) binder.onDebugChanged();
+                }
+            });
+            keeper.setEnabled(prefs.isPageEnabled());
+        } catch (Throwable t) {
+            Log.e(TAG, "page list keeper failed to start", t);
         }
     }
 
@@ -62,6 +89,7 @@ public class ClimateService extends Service {
     public void onDestroy() {
         try {
             if (prefs != null) prefs.unregister(prefListener);
+            if (keeper != null) keeper.close();
             if (binder != null) binder.close();
             if (car != null) car.stop();
         } catch (Throwable t) {

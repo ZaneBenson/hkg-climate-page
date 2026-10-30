@@ -75,6 +75,10 @@ check "code calls DATCManager.addTemperatureListener" has_ref "$TMP/dexcode.txt"
 check "code calls BCMManager.getDrvSeatHeatState" has_ref "$TMP/dexcode.txt" 'Lcom/hkmc/bcm/BCMManager;\.getDrvSeatHeatState'
 check "code reads the field VehicleInfoManager.DATC_SERVICE (sget-object)" has_ref "$TMP/dexcode.txt" 'sget-object.*Lcom/hkmc/VehicleInfoManager;\.DATC_SERVICE'
 check "code never constructs DATCManager" sh -c "! grep -q 'Lcom/hkmc/datc/DATCManager;\.<init>' $TMP/dexcode.txt"
+check "dex has PageListKeeper" grep -q "Lhkgclimate/app/PageListKeeper;" "$TMP/dex.txt"
+check "code registers a content observer on the settings" has_ref "$TMP/dexcode.txt" 'Landroid/content/ContentResolver;\.registerContentObserver'
+check "code writes the page lists with Settings.System.putString" has_ref "$TMP/dexcode.txt" 'Landroid/provider/Settings\$System;\.putString'
+check "dex has the page list changed action" grep -q "com.android.settings.splitscreen_settings.changed" "$TMP/dex.txt"
 check "dex has no reference to Lcom/hkmc/usm/" sh -c "! grep -q 'Lcom/hkmc/usm/' $TMP/dexcode.txt"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi

@@ -25,6 +25,8 @@ final class PageStates {
     static final String D_SEATS_READY = "seatsReady";
     /** boolean: the DATC temperature listener is registered. */
     static final String D_TEMP_READY = "tempReady";
+    /** String: the last page list write failure; null when there is none. */
+    static final String D_PAGE_LIST_ERROR = "pageListError";
 
     /** The page's Bundle (PageLink keys); debug, when not null, goes under K_DEBUG. */
     static Bundle toBundle(PageState s, Bundle debug) {
