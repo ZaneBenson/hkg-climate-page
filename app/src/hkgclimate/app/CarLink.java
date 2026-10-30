@@ -150,18 +150,19 @@ final class CarLink implements PageLinkBinder.DebugSource {
         core.onSeatOption(Seat.PASSENGER, astOption);
         drvState = m.getDrvSeatHeatState();
         astState = m.getAstSeatHeatState();
+        // the watch first: a core failure must not leave a followed send looking ignored
+        watchState(Seat.DRIVER, drvState);
+        watchState(Seat.PASSENGER, astState);
         core.onSeatState(Seat.DRIVER, drvState);
         core.onSeatState(Seat.PASSENGER, astState);
-        watch.onState(Seat.DRIVER, drvState);
-        watch.onState(Seat.PASSENGER, astState);
         seatListener = new BCMVehicleStatusListener() {
             @Override
             public void onDrvSeatHeaterStatusChanged(int state) {
+                watchState(Seat.DRIVER, state);
                 try {
                     boolean changed = drvState != state;
                     drvState = state;
                     core.onSeatState(Seat.DRIVER, state);
-                    watch.onState(Seat.DRIVER, state);
                     if (changed) debugChanged();
                 } catch (Throwable t) {
                     Log.w(TAG, "driver seat callback failed", t);
@@ -170,11 +171,11 @@ final class CarLink implements PageLinkBinder.DebugSource {
 
             @Override
             public void onAstSeatHeaterStatusChanged(int state) {
+                watchState(Seat.PASSENGER, state);
                 try {
                     boolean changed = astState != state;
                     astState = state;
                     core.onSeatState(Seat.PASSENGER, state);
-                    watch.onState(Seat.PASSENGER, state);
                     if (changed) debugChanged();
                 } catch (Throwable t) {
                     Log.w(TAG, "passenger seat callback failed", t);
@@ -186,6 +187,15 @@ final class CarLink implements PageLinkBinder.DebugSource {
         seatFailureLogged = false;
         core.onSeatsReady(true);
         debugChanged();
+    }
+
+    /** Tells the send watch a seat state, in its own try so nothing else can skip it. */
+    private void watchState(Seat seat, int state) {
+        try {
+            watch.onState(seat, state);
+        } catch (Throwable t) {
+            Log.w(TAG, "send watch update failed", t);
+        }
     }
 
     private void closeSeats() {

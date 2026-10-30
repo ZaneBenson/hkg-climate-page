@@ -6,8 +6,10 @@ import hkgclimate.core.UsmCalls;
 
 /**
  * The only code that touches the stock seat service: the two approved setters, one call each.
- * The manager is made on the first send, never earlier, and kept; if making it throws, nothing is
- * kept and the next send tries again. It catches nothing: CheckedSeatSender does.
+ * The manager is made on the first send, never earlier, and kept; if making it throws, or a setter
+ * throws, it is dropped and the next tap makes a new one (still one call per tap, never a retry).
+ * It catches nothing: CheckedSeatSender does. (The stock setters catch and log their own binder
+ * errors, so most failures show up as a send the seat does not follow, not as an exception.)
  * Main thread only (taps are handled there).
  */
 final class UsmSeatCalls implements UsmCalls {
@@ -20,12 +22,26 @@ final class UsmSeatCalls implements UsmCalls {
 
     @Override
     public void driver(int value) {
-        manager().setFrontSeatHeatDrvStep(value);
+        USMManager m = manager();
+        boolean ok = false;
+        try {
+            m.setFrontSeatHeatDrvStep(value);
+            ok = true;
+        } finally {
+            if (!ok) usm = null;
+        }
     }
 
     @Override
     public void passenger(int value) {
-        manager().setFrontSeatHeatAstStep(value);
+        USMManager m = manager();
+        boolean ok = false;
+        try {
+            m.setFrontSeatHeatAstStep(value);
+            ok = true;
+        } finally {
+            if (!ok) usm = null;
+        }
     }
 
     private USMManager manager() {

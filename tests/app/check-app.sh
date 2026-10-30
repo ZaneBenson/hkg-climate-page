@@ -69,6 +69,48 @@ usm_refs_ok() {
         }
         END { exit n > 0 }' "$1"
 }
+# usm_new_only_in <dexdump -d output> <class.method:>: USMManager is constructed somewhere, and
+# only in the code of that one method
+usm_new_only_in() {
+    awk -v want="$2" '
+        /Class descriptor/ { meth = "" }
+        /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m }
+        index($0, "Lcom/hkmc/usm/USMManager;.<init>") { n++; if (index(meth, want) != 1) { print; bad++ } }
+        END { exit !(n > 0 && bad == 0) }' "$1"
+}
+# no_typed_catch_in <dexdump -d output> <class descriptor>: the class's code catches no exception
+# type (a finally block, listed as <any>, rethrows and is allowed)
+no_typed_catch_in() {
+    awk -v cls="'$2'" '
+        /Class descriptor/ { incls = index($0, cls) > 0; next }
+        incls && /^ +L[^ ]*; -> 0x/ { print; n++ }
+        END { exit n > 0 }' "$1"
+}
+# usm_strings_ok <classes.dex>: no string in the dex names the stock seat service other than the
+# one allowed type descriptor Lcom/hkmc/usm/USMManager; (a service looked up by name, or a class
+# loaded by name, would otherwise pass the code checks)
+usm_strings_ok() {
+    "$PY" -I - "$1" <<'PY'
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+if d[:4] != b"dex\n":
+    sys.exit(1)
+size, off = struct.unpack_from("<II", d, 0x38)
+bad = 0
+for i in range(size):
+    (p,) = struct.unpack_from("<I", d, off + 4 * i)
+    while d[p] & 0x80:
+        p += 1
+    p += 1
+    s = d[p:d.index(b"\0", p)].decode("utf-8", "replace")
+    low = s.lower()
+    if any(k in low for k in ("hkmc/usm", "hkmc.usm", "micom/usm", "micom.usm")) \
+            and s != "Lcom/hkmc/usm/USMManager;":
+        print(s)
+        bad += 1
+sys.exit(1 if bad else 0)
+PY
+}
 
 # self-tests of has_ref and usm_refs_ok on throwaway dexes. The scratch sources (a com.hkmc.usm
 # USMManager with one extra member, and a com.hkmc.usm.Seat) live only in $TMP; they are never in
@@ -111,10 +153,23 @@ scratch_dex caller Caller 'public class Caller { void go() { new com.hkmc.usm.Se
 scratch_dex other Other 'public class Other { void go(android.content.Context c) { new com.hkmc.usm.USMManager(c).setFrontSeatHeatDrvStep(3); } }'
 scratch_dex good UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { com.hkmc.usm.USMManager m; void go(android.content.Context c) { if (m == null) m = new com.hkmc.usm.USMManager(c); m.setFrontSeatHeatDrvStep(3); m.setFrontSeatHeatAstStep(3); } }'
 scratch_dex extra UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { void go(android.content.Context c) { new com.hkmc.usm.USMManager(c).setOther(3); } }'
+scratch_dex seat UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { void go() { new com.hkmc.usm.Seat().send(3); } }'
+scratch_dex eager UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { com.hkmc.usm.USMManager m; UsmSeatCalls(android.content.Context c) { m = new com.hkmc.usm.USMManager(c); } com.hkmc.usm.USMManager manager() { return m; } }'
+scratch_dex name UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { Object go() throws Exception { return Class.forName("android.os.ServiceManager").getMethod("getService", String.class).invoke(null, "com.hkmc.micom.usm"); } }'
+scratch_dex fin UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { com.hkmc.usm.USMManager m; void go() { boolean ok = false; try { m.setFrontSeatHeatDrvStep(3); ok = true; } finally { if (!ok) m = null; } } }'
+scratch_dex catcher UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { void go(com.hkmc.usm.USMManager m) { try { m.setFrontSeatHeatDrvStep(3); } catch (RuntimeException e) { } } }'
 # usm_flags / usm_passes <listing> <ref>: the listing has <ref> (so the scratch build worked) and
 # usm_refs_ok fails / passes on it
 usm_flags() { grep -q "$2" "$1" && ! usm_refs_ok "$1"; }
 usm_passes() { grep -q "$2" "$1" && usm_refs_ok "$1"; }
+# lazy_flags <listing> <method>: USMManager is constructed there, and not only in <method>
+lazy_flags() { grep -q 'USMManager;\.<init>' "$1" && ! usm_new_only_in "$1" "$2"; }
+# strings_pass / strings_flag <scratch dir> [<string>]: the scratch dex was built (and has the
+# string) and usm_strings_ok passes / fails on it
+strings_pass() { [ -s "$1/code.txt" ] && grep -q 'Lcom/hkmc/usm/USMManager;' "$1/code.txt" && usm_strings_ok "$1/classes.dex"; }
+strings_flag() { grep -q "const-string.*\"$2\"" "$1/code.txt" && ! usm_strings_ok "$1/classes.dex"; }
+# catch_flags <listing> <class>: the listing has a typed catch and no_typed_catch_in fails on it
+catch_flags() { grep -q 'Ljava/lang/RuntimeException; -> 0x' "$1" && ! no_typed_catch_in "$1" "$2"; }
 check "self-test: the reference check finds a scratch com.hkmc.usm call" has_ref "$ST/caller/code.txt" 'Lcom/hkmc/usm/'
 check "self-test: usm check flags a com.hkmc.usm call from another class" \
     usm_flags "$ST/caller/code.txt" 'Lcom/hkmc/usm/Seat;\.send'
@@ -124,6 +179,20 @@ check "self-test: usm check passes UsmSeatCalls making the approved calls" \
     usm_passes "$ST/good/code.txt" 'USMManager;\.setFrontSeatHeatAstStep'
 check "self-test: usm check flags UsmSeatCalls calling another USMManager member" \
     usm_flags "$ST/extra/code.txt" 'USMManager;\.setOther'
+check "self-test: usm check flags UsmSeatCalls calling another com.hkmc.usm class" \
+    usm_flags "$ST/seat/code.txt" 'Lcom/hkmc/usm/Seat;\.send'
+check "self-test: the lazy check passes a USMManager made only in manager()" \
+    usm_new_only_in "$ST/good/code.txt" 'hkgclimate.app.UsmSeatCalls.go:'
+check "self-test: the lazy check flags a USMManager made in the constructor" \
+    lazy_flags "$ST/eager/code.txt" 'hkgclimate.app.UsmSeatCalls.manager:'
+check "self-test: the string check passes the allowed USMManager descriptor" \
+    strings_pass "$ST/good"
+check "self-test: the string check flags a service looked up by the name com.hkmc.micom.usm" \
+    strings_flag "$ST/name" 'com.hkmc.micom.usm'
+check "self-test: the catch check passes UsmSeatCalls with a finally block" \
+    no_typed_catch_in "$ST/fin/code.txt" 'Lhkgclimate/app/UsmSeatCalls;'
+check "self-test: the catch check flags UsmSeatCalls catching an exception" \
+    catch_flags "$ST/catcher/code.txt" 'Lhkgclimate/app/UsmSeatCalls;'
 
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
 check "versionName is 0.2.0-test2" grep -q "versionName='0.2.0-test2'" "$TMP/badging"
@@ -173,6 +242,18 @@ check "UsmSeatCalls constructs USMManager" has_ref "$TMP/dexcode.txt" 'Lcom/hkmc
 check "dex has UsmSeatCalls.<init>" grep -q '\] hkgclimate.app.UsmSeatCalls.<init>:' "$TMP/dexcode.txt"
 check "UsmSeatCalls.<init> does not construct USMManager" \
     method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.<init>:' 'Lcom/hkmc/usm/USMManager;\.<init>'
+check "USMManager is constructed only in UsmSeatCalls.manager" \
+    usm_new_only_in "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.manager:'
+check "UsmSeatCalls.<init> does not call manager()" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.<init>:' 'UsmSeatCalls;\.manager:'
+check "no dex string names the seat service except the USMManager type" usm_strings_ok "$TMP/classes.dex"
+# a failed setter drops the cached manager (a finally, not a catch), so the next tap makes a new one
+check "UsmSeatCalls.driver can clear the cached manager" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.driver:' 'iput-object.*UsmSeatCalls;\.usm:'
+check "UsmSeatCalls.passenger can clear the cached manager" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.passenger:' 'iput-object.*UsmSeatCalls;\.usm:'
+check "UsmSeatCalls catches no exception (CheckedSeatSender does)" \
+    no_typed_catch_in "$TMP/dexcode.txt" 'Lhkgclimate/app/UsmSeatCalls;'
 check "ClimateService builds the CheckedSeatSender" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/CheckedSeatSender;\.<init>'
 check "ClimateService builds the TestModeCommander" \
