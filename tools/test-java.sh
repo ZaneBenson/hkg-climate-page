@@ -13,7 +13,7 @@ if [ -z "$SRC" ]; then echo "no tests: no Java sources under core/src or core/te
 OUT=build/test-classes
 rm -rf "$OUT" && mkdir -p "$OUT"
 # shellcheck disable=SC2086 # one path per word; none contain spaces
-javac --release 8 -Xlint:-options -cp "$JUNIT_CP" -d "$OUT" $SRC
+javac -encoding UTF-8 --release 8 -Xlint:-options -cp "$JUNIT_CP" -d "$OUT" $SRC
 
 # every core/test/**/FooTest.java becomes the class name pkg.FooTest
 TESTS=
