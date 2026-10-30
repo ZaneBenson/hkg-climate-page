@@ -16,8 +16,11 @@ final class Prefs {
         prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
-    /** The outside temperature, in whole °F, at which seats switch from heat to cool. */
-    int getSwitchTempF() { return prefs.getInt(KEY_SWITCH_TEMP_F, SwitchTemp.DEFAULT_F); }
+    /** The outside temperature, in whole °F, at which seats switch from heat to cool; kept within MIN_F..MAX_F. */
+    int getSwitchTempF() {
+        int f = prefs.getInt(KEY_SWITCH_TEMP_F, SwitchTemp.DEFAULT_F);
+        return Math.max(SwitchTemp.MIN_F, Math.min(SwitchTemp.MAX_F, f));
+    }
 
     void setSwitchTempF(int f) { prefs.edit().putInt(KEY_SWITCH_TEMP_F, f).apply(); }
 

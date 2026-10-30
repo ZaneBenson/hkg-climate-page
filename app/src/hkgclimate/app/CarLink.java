@@ -32,7 +32,11 @@ final class CarLink implements PageLinkBinder.DebugSource {
         @Override public void run() { attempt(); }
     };
 
+    private Runnable onDebugChange;
     private boolean running;
+    // the full stack trace is logged on a part's first failure only; reset when the part comes up
+    private boolean seatFailureLogged;
+    private boolean tempFailureLogged;
     private BCMManager bcm;
     private BCMVehicleStatusListener seatListener;
     private boolean seatsReady;
@@ -56,6 +60,11 @@ final class CarLink implements PageLinkBinder.DebugSource {
         this.core = core;
     }
 
+    /** Run (on the main thread) after a ready flag or a raw debug value changes. */
+    void setOnDebugChange(Runnable r) {
+        onDebugChange = r;
+    }
+
     /** Main thread. Sets up what it can now and retries the rest every 10 s. */
     void start() {
         running = true;
@@ -68,6 +77,7 @@ final class CarLink implements PageLinkBinder.DebugSource {
         handler.removeCallbacks(retry);
         closeSeats();
         closeTemperature();
+        bcm = null;
     }
 
     @Override
@@ -93,7 +103,7 @@ final class CarLink implements PageLinkBinder.DebugSource {
             try {
                 openSeats();
             } catch (Throwable t) {
-                Log.w(TAG, "seat service not available, will retry", t);
+                seatFailureLogged = logFailure("seat service not available, will retry", t, seatFailureLogged);
                 closeSeats();
             }
         }
@@ -101,16 +111,35 @@ final class CarLink implements PageLinkBinder.DebugSource {
             try {
                 openTemperature();
             } catch (Throwable t) {
-                Log.w(TAG, "temperature service not available, will retry", t);
+                tempFailureLogged = logFailure("temperature service not available, will retry", t,
+                        tempFailureLogged);
                 closeTemperature();
             }
         }
         if (!seatsReady || !tempReady) handler.postDelayed(retry, RETRY_MS);
     }
 
+    /** Full stack trace the first time, one line after; returns the new "already logged" flag. */
+    private static boolean logFailure(String what, Throwable t, boolean logged) {
+        if (logged) Log.w(TAG, what + ": " + t);
+        else Log.w(TAG, what, t);
+        return true;
+    }
+
+    private void debugChanged() {
+        Runnable r = onDebugChange;
+        if (r == null) return;
+        try {
+            r.run();
+        } catch (Throwable t) {
+            Log.w(TAG, "debug change callback failed", t);
+        }
+    }
+
     private void openSeats() {
-        BCMManager m = new BCMManager(context);
-        bcm = m;
+        // one manager for the life of the link: a failing getter must not make a new one every retry
+        if (bcm == null) bcm = new BCMManager(context);
+        BCMManager m = bcm;
         drvOption = m.getDrvSeatHeatOption();
         astOption = m.getAstSeatHeatOption();
         core.onSeatOption(Seat.DRIVER, drvOption);
@@ -123,8 +152,10 @@ final class CarLink implements PageLinkBinder.DebugSource {
             @Override
             public void onDrvSeatHeaterStatusChanged(int state) {
                 try {
+                    boolean changed = drvState != state;
                     drvState = state;
                     core.onSeatState(Seat.DRIVER, state);
+                    if (changed) debugChanged();
                 } catch (Throwable t) {
                     Log.w(TAG, "driver seat callback failed", t);
                 }
@@ -133,8 +164,10 @@ final class CarLink implements PageLinkBinder.DebugSource {
             @Override
             public void onAstSeatHeaterStatusChanged(int state) {
                 try {
+                    boolean changed = astState != state;
                     astState = state;
                     core.onSeatState(Seat.PASSENGER, state);
+                    if (changed) debugChanged();
                 } catch (Throwable t) {
                     Log.w(TAG, "passenger seat callback failed", t);
                 }
@@ -142,13 +175,14 @@ final class CarLink implements PageLinkBinder.DebugSource {
         };
         m.addVehicleStatusListener(seatListener);
         seatsReady = true;
+        seatFailureLogged = false;
         core.onSeatsReady(true);
+        debugChanged();
     }
 
     private void closeSeats() {
         BCMManager m = bcm;
         BCMVehicleStatusListener l = seatListener;
-        bcm = null;
         seatListener = null;
         boolean was = seatsReady;
         seatsReady = false;
@@ -159,7 +193,10 @@ final class CarLink implements PageLinkBinder.DebugSource {
                 Log.w(TAG, "removing the seat listener failed", t);
             }
         }
-        if (was) core.onSeatsReady(false);
+        if (was) {
+            core.onSeatsReady(false);
+            debugChanged();
+        }
     }
 
     private void openTemperature() {
@@ -173,12 +210,15 @@ final class CarLink implements PageLinkBinder.DebugSource {
                     float amTempC, int amStateC, float amTempF, int amStateF, float m13, int n, float o, int p,
                     int q) {
                 try {
+                    boolean changed = tempC != amTempC || stateC != amStateC || tempF != amTempF
+                            || stateF != amStateF;
                     tempC = amTempC;
                     stateC = amStateC;
                     tempF = amTempF;
                     stateF = amStateF;
                     core.onOutside(OutsideTemp.of(amTempC, amStateC, amTempF, amStateF));
-                    readUnit();
+                    changed |= readUnit();
+                    if (changed) debugChanged();
                 } catch (Throwable t) {
                     Log.w(TAG, "temperature callback failed", t);
                 }
@@ -187,13 +227,19 @@ final class CarLink implements PageLinkBinder.DebugSource {
         m.addTemperatureListener(tempListener);
         readUnit();
         tempReady = true;
+        tempFailureLogged = false;
+        debugChanged();
     }
 
-    private void readUnit() {
+    /** Reads the display unit into the core; true when the raw unit differs from the last one. */
+    private boolean readUnit() {
         DATCManager m = datc;
-        if (m == null) return;
-        unit = m.getTemperatureUnit();
-        core.onDisplayUnit(unit);
+        if (m == null) return false;
+        int now = m.getTemperatureUnit();
+        boolean changed = now != unit;
+        unit = now;
+        core.onDisplayUnit(now);
+        return changed;
     }
 
     private void closeTemperature() {
@@ -201,6 +247,7 @@ final class CarLink implements PageLinkBinder.DebugSource {
         DATCTemperatureListener l = tempListener;
         datc = null;
         tempListener = null;
+        boolean was = tempReady;
         tempReady = false;
         if (m != null && l != null) {
             try {
@@ -209,5 +256,6 @@ final class CarLink implements PageLinkBinder.DebugSource {
                 Log.w(TAG, "removing the temperature listener failed", t);
             }
         }
+        if (was) debugChanged();
     }
 }

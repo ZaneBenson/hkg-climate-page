@@ -51,6 +51,7 @@ final class PageLinkBinder extends Binder {
     private final Handler handler = new Handler(Looper.getMainLooper());
     // main thread only
     private final ArrayList<Subscriber> subscribers = new ArrayList<Subscriber>();
+    private boolean closed;
     // binder threads; guarded by itself
     private final Set<Integer> refusedUids = new HashSet<Integer>();
 
@@ -65,6 +66,7 @@ final class PageLinkBinder extends Binder {
 
     /** Main thread: stop listening to the core and let go of every subscriber. */
     void close() {
+        closed = true;
         core.setListener(null);
         for (Subscriber s : new ArrayList<Subscriber>(subscribers)) drop(s);
     }
@@ -146,6 +148,7 @@ final class PageLinkBinder extends Binder {
     }
 
     private void subscribe(IBinder cb) {
+        if (closed) return;
         try {
             for (Subscriber s : subscribers) {
                 if (s.callback.equals(cb)) {
@@ -181,8 +184,13 @@ final class PageLinkBinder extends Binder {
         return PageStates.toBundle(core.pageState(), debugSource.debug());
     }
 
+    /** Main thread: the raw car values changed; send to everyone even if PageState is the same. */
+    void onDebugChanged() {
+        broadcast();
+    }
+
     private void broadcast() {
-        if (subscribers.isEmpty()) return;
+        if (closed || subscribers.isEmpty()) return;
         try {
             Bundle state = currentState();
             for (Subscriber s : new ArrayList<Subscriber>(subscribers)) send(s, state);

@@ -37,6 +37,9 @@ public class ClimateService extends Service {
             core = new ClimateCore(new TestModeCommander(), prefs.getSwitchTempF());
             car = new CarLink(this, core);
             binder = new PageLinkBinder(core, car);
+            car.setOnDebugChange(new Runnable() {
+                @Override public void run() { binder.onDebugChanged(); }
+            });
             prefs.register(prefListener);
             // Task 6: create the PageListKeeper here (it reads prefs.isPageEnabled()).
             car.start();
