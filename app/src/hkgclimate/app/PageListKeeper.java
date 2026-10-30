@@ -10,8 +10,7 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 import hkgclimate.core.PageList;
-import java.util.HashMap;
-import java.util.Map;
+import hkgclimate.core.ReAddLimiter;
 
 /**
  * Keeps our page (id 4) in the split screen's page lists, which live in three system settings.
@@ -28,10 +27,12 @@ final class PageListKeeper {
     private final ContentResolver resolver;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ContentObserver[] observers = new ContentObserver[KEYS.length];
-    // key -> elapsedRealtime of its last re-add by the observer
-    private final Map<String, Long> lastReAdd = new HashMap<String, Long>();
+    private final ReAddLimiter limiter = new ReAddLimiter(RE_ADD_WINDOW_MS);
+    // one deferred re-add per key at most, for a removal the window refused
+    private final Runnable[] pending = new Runnable[KEYS.length];
+    // the current write failure of each key; null when its last write went through
+    private final String[] errors = new String[KEYS.length];
     private boolean enabled;
-    private String lastError;
     private Runnable onChange;
 
     PageListKeeper(Context context) {
@@ -44,36 +45,58 @@ final class PageListKeeper {
         onChange = r;
     }
 
-    /** The last write failure, or null when the last batch of writes went through. */
+    /** The current write failures of the three lists, or null when there are none. */
     String lastError() {
-        return lastError;
+        StringBuilder sb = null;
+        for (String e : errors) {
+            if (e == null) continue;
+            if (sb == null) sb = new StringBuilder(); else sb.append("; ");
+            sb.append(e);
+        }
+        return sb == null ? null : sb.toString();
     }
 
     /**
      * Puts our page into the three lists (enabled) or takes it out (disabled), writing only the
-     * keys that change, then sends the changed broadcast once.
+     * keys that change. The changed broadcast goes out once, and only if a write went through.
      */
     void setEnabled(boolean on) {
         enabled = on;
-        lastError = null;
+        String errorsBefore = lastError();
         if (on) {
             observe();
         } else {
             unobserve();
-            lastReAdd.clear();
+            cancelPending();
+            limiter.clear();
         }
-        for (String key : KEYS) {
-            String now = Settings.System.getString(resolver, key);
-            write(key, now, on ? PageList.withPage(now) : PageList.withoutPage(now));
+        boolean wrote = false;
+        boolean attempted = false;
+        for (int i = 0; i < KEYS.length; i++) {
+            String now = Settings.System.getString(resolver, KEYS[i]);
+            String wanted = on ? PageList.withPage(now) : PageList.withoutPage(now);
+            errors[i] = null;
+            if (wanted == null || wanted.equals(now)) continue;
+            attempted = true;
+            wrote |= write(i, now, wanted);
         }
-        broadcastChanged();
-        changed();
+        if (wrote) broadcastChanged();
+        String after = lastError();
+        if (attempted || (errorsBefore == null ? after != null : !errorsBefore.equals(after))) changed();
     }
 
     /** Stops watching the lists. The lists are left as they are. */
     void close() {
         enabled = false;
         unobserve();
+        cancelPending();
+    }
+
+    private void cancelPending() {
+        for (int i = 0; i < pending.length; i++) {
+            if (pending[i] != null) handler.removeCallbacks(pending[i]);
+            pending[i] = null;
+        }
     }
 
     private void observe() {
@@ -106,43 +129,60 @@ final class PageListKeeper {
         }
     }
 
-    /** A list changed: put our page back if it is gone, at most once per key per window. */
+    /**
+     * A list changed: put our page back if it is gone. At most one re-add per key per window; a
+     * removal the window refuses gets exactly one deferred re-add for the time that is left.
+     */
     private void reAdd(String key) {
         if (!enabled) return;
+        final int i = indexOf(key);
         String now = Settings.System.getString(resolver, key);
         String wanted = PageList.withPage(now);
         if (wanted == null || wanted.equals(now)) return;
-        long t = SystemClock.elapsedRealtime();
-        Long last = lastReAdd.get(key);
-        if (last != null && t - last < RE_ADD_WINDOW_MS) {
-            Log.w(TAG, key + " lost the climate page again within 10 s; not putting it back yet");
+        long wait = limiter.acquire(key, SystemClock.elapsedRealtime());
+        if (wait > 0) {
+            if (pending[i] != null) return;
+            Log.w(TAG, key + " lost the climate page again within 10 s; putting it back in " + wait + " ms");
+            pending[i] = new Runnable() {
+                @Override public void run() {
+                    pending[i] = null;
+                    try {
+                        reAdd(KEYS[i]);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "deferred page list check failed for " + KEYS[i], t);
+                    }
+                }
+            };
+            handler.postDelayed(pending[i], wait);
             return;
         }
-        lastReAdd.put(key, t);
-        lastError = null;
-        write(key, now, wanted);
-        broadcastChanged();
+        errors[i] = null;
+        boolean wrote = write(i, now, wanted);
+        if (wrote) broadcastChanged();
         changed();
     }
 
-    /** Writes the key when the value differs; a failure is logged and kept in lastError. */
-    private void write(String key, String now, String wanted) {
-        if (wanted == null || wanted.equals(now)) return;
+    private static int indexOf(String key) {
+        for (int i = 0; i < KEYS.length; i++) {
+            if (KEYS[i].equals(key)) return i;
+        }
+        throw new IllegalArgumentException(key);
+    }
+
+    /** Writes the new value of KEYS[i]; a failure is logged and kept as that key's error. */
+    private boolean write(int i, String now, String wanted) {
+        String key = KEYS[i];
         try {
             if (Settings.System.putString(resolver, key, wanted)) {
                 Log.i(TAG, "page list " + key + ": " + now + " -> " + wanted);
-            } else {
-                fail(key, "the write was refused");
+                return true;
             }
+            errors[i] = "could not write " + key + ": the write was refused";
         } catch (RuntimeException e) {
             Log.w(TAG, "writing the page list " + key + " failed", e);
-            fail(key, e.getClass().getSimpleName() + ": " + e.getMessage());
+            errors[i] = "could not write " + key + ": " + e.getClass().getSimpleName() + ": " + e.getMessage();
         }
-    }
-
-    private void fail(String key, String why) {
-        String msg = "could not write " + key + ": " + why;
-        lastError = lastError == null ? msg : lastError + "; " + msg;
+        return false;
     }
 
     private void broadcastChanged() {

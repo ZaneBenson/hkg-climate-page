@@ -41,4 +41,15 @@ public class PageListTest {
         assertEquals("14,24,40", PageList.withoutPage("14,24,40"));
         assertEquals("40,4", PageList.withPage("40"));
     }
+
+    @Test
+    public void emptyTokensAndSpacesAreIgnored() {
+        assertEquals("0,21", PageList.withoutPage("0, 4,21"));
+        assertEquals("5", PageList.withoutPage(",4,5"));
+        assertEquals("0", PageList.withoutPage("0,,4"));
+        assertEquals("4", PageList.withPage(","));
+        assertEquals("0, 4,21", PageList.withPage("0, 4,21"));
+        assertEquals("5,4", PageList.withPage(",5"));
+        assertEquals("0,4,21", PageList.withPage(" 0 ,21"));
+    }
 }
