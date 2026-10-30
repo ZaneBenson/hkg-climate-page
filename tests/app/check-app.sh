@@ -1,6 +1,7 @@
 #!/bin/sh
 # Host check of the app build: builds the signed APK and asserts its manifest facts, its v1
-# signature, and that no stock stub class or send-path reference is packaged.
+# signature, a few calls its code must make, and that no stock stub class or send-path
+# reference is packaged.
 # usage: sh tests/app/check-app.sh   (prints one line per check; exit 1 if any check fails)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 eval "$("$ROOT/tools/toolchain.sh" env)"
@@ -31,6 +32,11 @@ fi
 
 # has_ref <dexdump -d output> <class>: the code refers to the class, e.g. Lcom/hkmc/usm/
 has_ref() { grep -q "$2" "$1"; }
+# method_has_ref <dexdump -d output> <class.method:> <ref>: that method's code refers to <ref>
+method_has_ref() {
+    awk -v m="$2" 'index($0, "] " m) { on = 1; next } on && /\|\[/ { on = 0 } on' "$1" | grep -q "$3"
+}
+method_lacks_ref() { ! method_has_ref "$@"; }
 
 # self-test of has_ref: a throwaway dex whose code calls a scratch com.hkmc.usm class must be a
 # hit. The scratch sources live only in $TMP; they are never in the repo or the APK.
@@ -75,6 +81,17 @@ check "code calls DATCManager.addTemperatureListener" has_ref "$TMP/dexcode.txt"
 check "code calls BCMManager.getDrvSeatHeatState" has_ref "$TMP/dexcode.txt" 'Lcom/hkmc/bcm/BCMManager;\.getDrvSeatHeatState'
 check "code reads the field VehicleInfoManager.DATC_SERVICE (sget-object)" has_ref "$TMP/dexcode.txt" 'sget-object.*Lcom/hkmc/VehicleInfoManager;\.DATC_SERVICE'
 check "code never constructs DATCManager" sh -c "! grep -q 'Lcom/hkmc/datc/DATCManager;\.<init>' $TMP/dexcode.txt"
+# the service starts itself so it outlives the page's binds (START_STICKY only holds for a started service)
+check "ClimateService calls startService" has_ref "$TMP/dexcode.txt" 'Lhkgclimate/app/ClimateService;\.startService:'
+# the Android docs: unbind even when bindService returned false
+check "SettingsActivity.onStart can unbind (a failed bind)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.onStart:' '\.unbindService:'
+# self-test of method_has_ref: it sees onStart's own bind, and stops at the next method (onStop,
+# listed later, calls disconnect; onStart does not)
+check "self-test: method_has_ref sees onStart's bindService" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.onStart:' '\.bindService:'
+check "self-test: method_has_ref stops at the end of onStart" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.onStart:' 'SettingsActivity;\.disconnect:'
 check "dex has PageListKeeper" grep -q "Lhkgclimate/app/PageListKeeper;" "$TMP/dex.txt"
 check "code registers a content observer on the settings" has_ref "$TMP/dexcode.txt" 'Landroid/content/ContentResolver;\.registerContentObserver'
 check "code writes the page lists with Settings.System.putString" has_ref "$TMP/dexcode.txt" 'Landroid/provider/Settings\$System;\.putString'

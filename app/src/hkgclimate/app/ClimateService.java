@@ -41,6 +41,13 @@ public class ClimateService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        // start ourselves: a service that is only bound dies with its last bind (the panel unbinds
+        // when our page leaves its list), and START_STICKY only keeps a started service alive
+        try {
+            startService(new Intent(this, ClimateService.class));
+        } catch (Throwable t) {
+            Log.w(TAG, "climate service could not start itself", t);
+        }
         try {
             prefs = new Prefs(this);
             core = new ClimateCore(new TestModeCommander(), prefs.getSwitchTempF());

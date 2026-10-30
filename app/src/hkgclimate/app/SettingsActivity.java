@@ -96,6 +96,14 @@ public class SettingsActivity extends Activity {
         super.onStart();
         try {
             bound = bindService(new Intent(this, ClimateService.class), connection, Context.BIND_AUTO_CREATE);
+            if (!bound) {
+                // the Android docs: unbind even when the bind failed, to release the connection
+                try {
+                    unbindService(connection);
+                } catch (Throwable t) {
+                    Log.w(TAG, "settings could not unbind after a failed bind", t);
+                }
+            }
         } catch (Throwable t) {
             Log.w(TAG, "settings could not bind to the climate service", t);
         }
