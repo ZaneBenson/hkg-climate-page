@@ -100,6 +100,42 @@ system uid, persistent, 161,884,916-byte APK + 2,137,656-byte odex). Line number
   merged into the deodexed code) that shows content pushed by our own app and forwards taps
   to it, with everything wrapped in catch blocks.
 
+### Hook points checked for the panel patch (plan 2, task 9)
+
+Checked in `private/work/panel-stock-smali` (made by `tools/deodex-panel.sh`; line numbers
+are in that tree's `SplitScreenHome.smali`).
+
+- **Deodex:** the 16 boot class path entries alone are enough. baksmali skips no class, gives
+  632 classes, and `diff -r` against the 2026-10-30 research tree is empty.
+- **End of the `pz` block in `cM()`:** `v1` gets `pz` and is locked at line 14721 and is not
+  written again inside the block. The only normal `monitor-exit v1` is at 16425, followed by
+  the method's only `return-void`. There is no label between `:cond_a55` (16399) and that
+  `monitor-exit`, so every normal path to the end of the block passes `:cond_a55` (by the
+  `if-eqz v0` at 16326 or by falling through from the digital-frame block). The other exits
+  are the catchall handlers, which rethrow. The insertion stays right after `:cond_a55`. The
+  stock lines after it write `v0`, `v2` and `v3` before reading them, so our hook may use them.
+- **`aS(I)`:** `:goto_2d` (7377) is followed by `return-object v0`. `:pswitch_1b8` is written
+  twice in the method: the case 4 label (7865) and its entry in the packed-switch table (8023).
+  `tools/patch-panel.py` counts only labels outside switch tables. smali turns our short
+  `goto :goto_2d` into `goto/16`, because the target is too far back for an 8-bit jump.
+- **Clock block (15554-15614):** its references to `mContext` and `mHandler` (both named
+  through `SplitScreenHome`), `oa`, `od`, `ou`, `pv` with `n/l.sendMessage`, `Message.obtain`,
+  `what`/`arg1`/`obj`, `Integer.valueOf` and `ArrayList.add`/`set` match `register.smali`
+  (same instruction, same reference). The only new references are our factory, our field and
+  `k.bh(I)`.
+- **Stock `k`** matches our compile stub (`panel/stub`): class modifiers, field types and
+  modifiers, constructor, abstract `getView()`, `f(Z)`, `a(ZConfiguration)`, `H(Z)`, `e(IZ)` and
+  synchronized `bh(I)`. Stock `k` also has `viewId`, `b(Message)`, `e(I,String)`, `eF`, `eG`,
+  `ek`, `r(String)`, `r(Z)` and `setFullScreen(Z)`; our page declares none of those names.
+- **The 0x3f5 handler** is a case in `M`; it checks that `obj` is a `k` before storing its view.
+- **Rebuilt `classes.dex`:** 650 classes (632 stock + 18 ours), 1,926,500 bytes; the delta is
+  263,503 bytes. Disassembled again, it matches the stock tree apart from our hooks in
+  `SplitScreenHome` (labels after them move), added baksmali comments, and `n/s.t(String,String)`:
+  there baksmali had replaced four odex instructions it couldn't resolve with `throw` of the same
+  register. That register is always null there and each one sits behind an `if-eqz` on a
+  register that is always null, so it is dead code either way (the code gets 4 units shorter
+  and its labels move). The research tree has the same lines.
+
 ## Outside temperature
 
 From the car's log (hkg-climate kit run) and the disassembled framework and stock apps

@@ -8,3 +8,4 @@ private/
 .superpowers/
 build/
 tools/lpatch/lpatch-host
+__pycache__/
