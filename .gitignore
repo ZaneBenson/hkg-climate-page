@@ -7,3 +7,4 @@ private/
 *.dex
 .superpowers/
 build/
+tools/lpatch/lpatch-host

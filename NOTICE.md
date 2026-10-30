@@ -3,8 +3,12 @@
 ## HMG Leafia Plus (GPL-3.0)
 
 https://github.com/VysseCodes/HMG-Leafia-Plus. The read-only USB kit follows the Leafia
-kit's approach, and the split-screen patch will use a copy of its `lpatch` tool (`zipadd`).
-Much of the first research on the seat and climate services was done alongside it.
+kit's approach. Copied from it at commit 08f4436, each file saying so in its header:
+`tools/lpatch/` (the `lpatch` tool: `lpatch.c`, `build.sh`, `test.sh`), `tools/mkdelta.py`
+and `tools/requirements.txt`. We changed `lpatch zipadd` to stream the APK and the dex
+instead of loading them whole, so it can rebuild the 162 MB split-screen panel APK, and
+extended `test.sh` for that. Much of the first research on the seat and climate services
+was done alongside it.
 
 ## hkmc-coldstart-heat (MIT)
 
