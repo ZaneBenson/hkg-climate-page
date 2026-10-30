@@ -6,7 +6,8 @@
 #
 # Cases: install; uninstall after it; wrong firmware; changed stock APK; /system remount
 # failing during postinstall; not enough free space on /data; a postinstall step failing
-# after the new APK is in place; postinstall killed mid-swap; a kept backup with a live APK
+# after the new APK is in place, and a signal during the undo that follows; postinstall
+# killed mid-swap; a kept backup with a live APK
 # that is neither stock nor ours; Android down. Also checks the zip's layout
 # and that tools/build-package.sh refuses commands the head unit's shell lacks.
 #
@@ -23,6 +24,7 @@
 # so only postinstall's remount fails), df (free space from MOCK_DF_SYSTEM/MOCK_DF_DATA),
 # md5, chown, restorecon, reboot, and rm (cannot remove the live odex while
 # <case>/rm-odex.fail exists); dexopt kills the hook while <case>/dexopt.kill exists;
+# restorecon sends the hook TERM on its second call while <case>/restorecon.kill2 exists;
 # MOCK_ANDROID_DOWN=1 makes sys.boot_completed 0 and am, pm and settings fail; bin/lpatch becomes a wrapper running the real one in qemu.
 #
 # Adapted from HMG Leafia Plus (https://github.com/VysseCodes/HMG-Leafia-Plus) at commit 08f4436.
@@ -115,6 +117,41 @@ check "drop_page4: trims, drops empties and every 4" test "$(drop4 ' 4, 0 ,,4 ,2
 check "drop_page4: no 4 -> nothing dropped" test "$(drop4 '0,21,3')" = "0:0,21,3"
 check "drop_page4: '*' is not a glob"     test "$(drop4 '*,4')" = "1:*"
 
+# ---- retiring the USB install descriptor (the function alone, its paths moved into $T/usb)
+# retire <descriptor text | -unreadable>: prints the function's log lines, then what is left in usb0
+retire() {
+    rm -rf "$T/usb"; mkdir -p "$T/usb/storage/usb0"
+    if [ "$1" = -unreadable ]; then
+        echo "type=install" > "$T/usb/storage/usb0/NEMESIS.data"; chmod 000 "$T/usb/storage/usb0/NEMESIS.data"
+    else
+        printf '%s\n' "$1" > "$T/usb/storage/usb0/NEMESIS.data"
+    fi
+    $MOCK_SH -c "log() { echo \"log: \$*\"; }
+$(sed -n '/^retire_usb_descriptor()/,/^}/p' "$ROOT/package/scripts/common.sh" \
+        | sed -e "s|/storage/|$T/usb/storage/|g" -e "s|/mnt/media_rw/|$T/usb/mnt/media_rw/|g")
+retire_usb_descriptor" | sed "s|$T/usb||g"
+    chmod 644 "$T/usb/storage/usb0/NEMESIS.data" 2> /dev/null
+    ls "$T/usb/storage/usb0"
+}
+OURS=$(printf '[nemesis]\nversion=1.0\ntype=install\npath=packages/%s.zip' "$ID")
+_r=$(retire "$OURS")
+check "retire: our install descriptor is renamed" test "$(echo "$_r" | grep -v '^log:')" = NEMESIS.data.installed
+check "retire: and says so"               sh -c 'echo "$1" | grep -q "^log: renamed /storage/usb0/NEMESIS.data"' sh "$_r"
+_r=$(retire "$(echo "$OURS" | sed 's/type=install/type=uninstall/')")
+check "retire: an uninstall descriptor is left alone" test "$_r" = NEMESIS.data
+_r=$(retire "$(echo "$OURS" | sed 's/hkg\.climate\.page/hkg.other.page/')")
+check "retire: another package's descriptor is left alone" test "$_r" = NEMESIS.data
+_r=$(retire "$(echo "$OURS" | sed 's/hkg\.climate\.page/hkgXclimate.page/')")
+check "retire: the dots in the package name are literal" test "$_r" = NEMESIS.data
+_r=$(retire "$(echo "$OURS" | sed 's/^type=install/x type=install/')")
+check "retire: type=install must start a line" test "$_r" = NEMESIS.data
+_r=$(retire "$(echo "$OURS" | sed -n '/type=install/,$p')")
+check "retire: type=install on the first line counts" test "$(echo "$_r" | grep -v '^log:')" = NEMESIS.data.installed
+_r=$(retire -unreadable)
+check "retire: an unreadable descriptor is left alone" test "$(echo "$_r" | grep -v '^log:')" = NEMESIS.data
+check "retire: and logs a WARN"           sh -c 'echo "$1" | grep -q "^log: WARN: could not read /storage/usb0/NEMESIS.data"' sh "$_r"
+rm -rf "$T/usb"
+
 # ---- the sandbox
 mkdir -p "$T/stock" "$T/stub"
 cp "$STOCK/app/RightScreenHome.apk" "$STOCK/app/RightScreenHome.odex" "$T/stock/"
@@ -203,6 +240,12 @@ echo "chown $*" >> "$MOCK/calls.log"
 E
 stub restorecon <<'E'
 #!/bin/sh
+# restorecon.kill2: the hook is sent TERM on the second call (the first file written back by
+# an undo after the new APK went in), to show a second signal cannot cut the restore short
+if [ -e "$MOCK/restorecon.kill2" ]; then
+    echo x >> "$MOCK/restorecon.count"
+    [ "$(wc -l < "$MOCK/restorecon.count")" -eq 2 ] && kill -TERM "$PPID"
+fi
 exit 0
 E
 stub reboot <<'E'
@@ -361,6 +404,20 @@ check "undo toast says restored + uninstall" \
 check "no reboot"                         test ! -e "$X/rebooted"
 check "no temp file left in /system/app"  sh -c "! ls '$R/system/app' | grep -q tmp"
 check "no dalvik entry left"              sh -c "! ls '$R/data/dalvik-cache' | grep -q RightScreenHome"
+end_case
+
+# ---- 7b a signal arrives while the undo is writing the stock files back: it is ignored
+new_case undo-signal
+check "pre.sh exits 0"                    run_pre
+: > "$X/rm-odex.fail"; : > "$X/restorecon.kill2"
+check "post.sh exits 1"                   fails run_post
+check "the signal was sent during the restore" test "$(wc -l < "$X/restorecon.count")" -ge 2
+check "the stock APK was written back"    grep -q "^restored .*RightScreenHome.apk$" "$X/post.out"
+check "the restore finished"              grep -q "the split-screen panel is back to stock" "$X/post.out"
+check "/system byte-identical to stock"   sys_same "$X/before.md5"
+check "panel enabled"                     panel_enabled
+check "undo toast says restored + uninstall" \
+    called "the split-screen panel was restored to stock. Uninstall HKG Climate Page in NEMESIS."
 end_case
 
 # ---- 8 postinstall killed during dexopt (APK replaced, odex removed): the EXIT trap restores

@@ -36,6 +36,8 @@ fail() {
 }
 # put_back <why>: /system may have changed: write the stock files back
 put_back() {
+    # a second signal must not cut the restore short
+    trap '' HUP INT TERM
     SWAPPING=0
     log "FAIL: $1 - putting the stock files back"
     if restore_stock; then

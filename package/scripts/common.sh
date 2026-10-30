@@ -368,12 +368,18 @@ release() {
 
 # NEMESIS 1.15 force-updates an installed package from a USB drive while Android is down, and
 # we reboot after installing: rename our install descriptor so the next boot leaves it alone
+# (matched with case, not grep: toolbox grep may be missing or limited)
 retire_usb_descriptor() {
-    local _d
+    local _d _c _nl='
+'
     for _d in /storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb0 /mnt/media_rw/usb1 /mnt/media_rw/usb2; do
         [ -f "$_d/NEMESIS.data" ] || continue
-        grep -q '^type=install' "$_d/NEMESIS.data" 2>/dev/null || continue
-        grep -q 'hkg\.climate\.page\.zip' "$_d/NEMESIS.data" 2>/dev/null || continue
+        if ! _c=$(cat "$_d/NEMESIS.data" 2>/dev/null); then
+            log "WARN: could not read $_d/NEMESIS.data - if it installs this package, remove the USB drive before the head unit restarts"
+            continue
+        fi
+        case "$_nl$_c" in *"${_nl}type=install"*) ;; *) continue ;; esac
+        case "$_c" in *hkg.climate.page.zip*) ;; *) continue ;; esac
         if mv "$_d/NEMESIS.data" "$_d/NEMESIS.data.installed" 2>/dev/null; then
             log "renamed $_d/NEMESIS.data to NEMESIS.data.installed so the next boot does not reinstall"
         else
