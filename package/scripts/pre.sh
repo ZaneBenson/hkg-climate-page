@@ -29,6 +29,7 @@ case "$_p" in
 esac
 read_manifest || refuse "HKG Climate Page was not installed: the package is damaged."
 check_stock || refuse "HKG Climate Page was not installed: this head unit's split-screen app is not the stock file. Nothing was changed."
+live_apk_known || refuse "HKG Climate Page was not installed: this head unit's split-screen app is not the stock file. Nothing was changed."
 clean_build
 check_space || refuse "HKG Climate Page was not installed: not enough free space. Nothing was changed."
 check_remount || refuse "HKG Climate Page was not installed: could not unlock the system partition. Restart the head unit and try again."

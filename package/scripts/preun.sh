@@ -25,6 +25,7 @@ wipe_dalvik
 clean_build
 # our app keeps page 4 in the lists while it runs; stop it before taking the page out
 am force-stop "$APP_PKG" > /dev/null 2>&1 || log "WARN: could not stop $APP_PKG"
+# while the panel is still held, on purpose: it re-reads the lists when release starts it
 clean_page_lists
 if [ $_ok = 1 ]; then
     remove_backup_dir

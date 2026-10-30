@@ -20,9 +20,10 @@ APK=$ROOT/build/app/hkgclimate.apk
 [ -s "$APK" ] || { echo "build-package: missing $APK (run tools/build-app.sh)" >&2; exit 1; }
 
 # The head unit's shell (mksh/toolbox) has no printf, tail, head or seq, and no [[ ]].
-# Match them as commands (at the start of a command or after a keyword), outside comments,
-# so words like "header" or "the head unit" in text pass.
-CMD='(^|[;&|({`!]|(^|[[:space:]])(then|do|else|elif|if|while|until|exec|command|xargs))[[:space:]]*(printf|tail|head|seq)([[:space:];&|)`]|$)'
+# Match them as commands (at the start of a command, after a case arm's ")" or after a
+# keyword such as then, eval or time), outside comments, so words like "header" or "the
+# head unit" in text pass.
+CMD='(^|[;&|(){`!]|(^|[[:space:]])(then|do|else|elif|if|while|until|exec|command|xargs|eval|time))[[:space:]]*(printf|tail|head|seq)([[:space:];&|)`]|$)'
 DBL='(^|[[:space:];&|(!])\[\[([[:space:]]|$)'
 _bad=0
 for _f in $(find "$ROOT/package" -name '*.sh' | LC_ALL=C sort); do

@@ -87,6 +87,19 @@ check_stock() {
     return 0
 }
 
+# live_apk_known: with a backup kept from an earlier run the live APK may be ours rather than
+# stock; it must be one of the two (needs read_manifest), anything else is not ours to replace
+live_apk_known() {
+    local _got
+    [ -s "$BACKUP_DIR/RightScreenHome.apk" ] || return 0
+    _got=$(lp_md5 "$LIVE_APK")
+    if [ "$_got" != "$(stock_md5 RightScreenHome.apk)" ] && [ "$_got" != "$WANT_MD5" ]; then
+        log "FAIL: $LIVE_APK checksum ${_got:-unreadable} is neither the stock APK nor ours"
+        return 1
+    fi
+    return 0
+}
+
 # read_manifest: PATCH_NAME, WANT_MD5 and WANT_SIZE (bytes) of the rebuilt APK, from patch/manifest
 read_manifest() {
     [ -s "$PKG/patch/manifest" ] || { log "FAIL: patch/manifest missing"; return 1; }
@@ -370,15 +383,22 @@ retire_usb_descriptor() {
     true
 }
 
-# drop_page4 <list>: PAGES = the comma list without page 4 (spaces trimmed, empty entries
-# dropped); DROPPED=1 when a 4 was taken out
+# drop_page4 <list>: PAGES = the comma list without page 4, each entry trimmed of spaces and
+# empty entries dropped (as PageList.withoutPage); DROPPED=1 when a 4 was taken out
 drop_page4() {
     local _t _ifs=$IFS
     PAGES=""
     DROPPED=0
     set -f
-    IFS=', '
+    IFS=,
     for _t in $1; do
+        while :; do
+            case "$_t" in
+                " "*) _t=${_t# } ;;
+                *" ") _t=${_t% } ;;
+                *) break ;;
+            esac
+        done
         [ -n "$_t" ] || continue
         if [ "$_t" = 4 ]; then DROPPED=1; continue; fi
         PAGES=${PAGES:+$PAGES,}$_t
@@ -402,6 +422,8 @@ clean_page_lists() {
             log "WARN: could not write $_k"
         fi
     done
+    # sent while the panel is still held, on purpose: the panel re-reads the lists when it
+    # starts again, and the broadcast covers a panel that was not stopped
     am broadcast -a com.android.settings.splitscreen_settings.changed > /dev/null 2>&1 \
         || log "WARN: page-list broadcast failed"
 }

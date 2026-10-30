@@ -5,7 +5,9 @@
 # usage: sh tests/package/run.sh [package zip]   (default: dist/hkg-climate-page.zip)
 #
 # Cases: install; uninstall after it; wrong firmware; changed stock APK; /system remount
-# failing during postinstall; not enough free space on /data. Also checks the zip's layout
+# failing during postinstall; not enough free space on /data; a postinstall step failing
+# after the new APK is in place; postinstall killed mid-swap; a kept backup with a live APK
+# that is neither stock nor ours; Android down. Also checks the zip's layout
 # and that tools/build-package.sh refuses commands the head unit's shell lacks.
 #
 # Needs private/HKGCLIMATE/stock (app/RightScreenHome.apk, .odex, init.environ.rc); without
@@ -19,7 +21,9 @@
 # am, settings (one file per key), dexopt (writes the APK's classes.dex as the odex), nemesis
 # (remount rw fails while <case>/remount-rw.fail exists: the test creates it after preinstall,
 # so only postinstall's remount fails), df (free space from MOCK_DF_SYSTEM/MOCK_DF_DATA),
-# md5, chown, restorecon, reboot; bin/lpatch becomes a wrapper running the real one in qemu.
+# md5, chown, restorecon, reboot, and rm (cannot remove the live odex while
+# <case>/rm-odex.fail exists); dexopt kills the hook while <case>/dexopt.kill exists;
+# MOCK_ANDROID_DOWN=1 makes sys.boot_completed 0 and am, pm and settings fail; bin/lpatch becomes a wrapper running the real one in qemu.
 #
 # Adapted from HMG Leafia Plus (https://github.com/VysseCodes/HMG-Leafia-Plus) at commit 08f4436.
 # This program is free software: you can redistribute it and/or modify it under the terms of
@@ -97,6 +101,19 @@ check "lint: refuses | tail"         lint_refuses 'echo a | tail -n 1'
 check "lint: refuses printf"         lint_refuses '    printf x'
 check "lint: refuses \$(seq ...)"    lint_refuses 'for _i in $(seq 3); do :; done'
 check "lint: refuses [[ ]]"          lint_refuses '[[ -n x ]] && echo x'
+check "lint: refuses after a case arm" lint_refuses '    *) head -n 1 f ;;'
+check "lint: refuses after eval"     lint_refuses 'eval printf x'
+check "lint: refuses after time"     lint_refuses 'time head f'
+
+# ---- page-list editing (as PageList.withoutPage: comma split, entries trimmed, empties dropped)
+drop4() {
+    $MOCK_SH -c "$(sed -n '/^drop_page4()/,/^}/p' "$ROOT/package/scripts/common.sh")
+drop_page4 \"\$1\"; echo \"\$DROPPED:\$PAGES\"" sh "$1"
+}
+check "drop_page4: '1 2,4' -> '1 2'"      test "$(drop4 '1 2,4')" = "1:1 2"
+check "drop_page4: trims, drops empties and every 4" test "$(drop4 ' 4, 0 ,,4 ,21, 3 ')" = "1:0,21,3"
+check "drop_page4: no 4 -> nothing dropped" test "$(drop4 '0,21,3')" = "0:0,21,3"
+check "drop_page4: '*' is not a glob"     test "$(drop4 '*,4')" = "1:*"
 
 # ---- the sandbox
 mkdir -p "$T/stock" "$T/stub"
@@ -108,13 +125,14 @@ stub getprop <<'E'
 #!/bin/sh
 case "$1" in
     ro.build.product) echo "$MOCK_PRODUCT" ;;
-    sys.boot_completed) echo 1 ;;
+    sys.boot_completed) if [ "$MOCK_ANDROID_DOWN" = 1 ]; then echo 0; else echo 1; fi ;;
     *) echo "" ;;
 esac
 E
 stub pm <<'E'
 #!/bin/sh
 echo "pm $*" >> "$MOCK/calls.log"
+[ "$MOCK_ANDROID_DOWN" = 1 ] && { echo "Error: Could not access the Package Manager" >&2; exit 1; }
 case "$1" in
     path) [ "$2" = com.mobis.splitscreen.right ] || exit 1; echo "package:/system/app/RightScreenHome.apk" ;;
     disable) : > "$MOCK/pm_disabled_$2"; echo "Package $2 new state: disabled" ;;
@@ -125,11 +143,13 @@ E
 stub am <<'E'
 #!/bin/sh
 echo "am $*" >> "$MOCK/calls.log"
+[ "$MOCK_ANDROID_DOWN" = 1 ] && { echo "Error: Android is down" >&2; exit 1; }
 echo "am: ok"
 E
 stub settings <<'E'
 #!/bin/sh
 echo "settings $*" >> "$MOCK/calls.log"
+[ "$MOCK_ANDROID_DOWN" = 1 ] && { echo "Error: Android is down" >&2; exit 1; }
 case "$1" in
     get) cat "$MOCK/settings/$3" 2>/dev/null || echo null ;;
     put) echo "$4" > "$MOCK/settings/$3" ;;
@@ -138,6 +158,8 @@ E
 stub dexopt <<'E'
 #!/bin/sh
 echo "dexopt $* BOOTCLASSPATH=$BOOTCLASSPATH" >> "$MOCK/calls.log"
+# dexopt.kill: the hook is killed here, after the new APK is in place and the odex removed
+[ -e "$MOCK/dexopt.kill" ] && { kill -TERM "$PPID"; exit 1; }
 [ "$1" = --preopt ] || exit 1
 unzip -p "$2" classes.dex > "$3"
 E
@@ -160,6 +182,16 @@ for _m; do
         /data) line /data "${MOCK_DF_DATA:-814.2M}" ;;
     esac
 done
+E
+stub rm <<'E'
+#!/bin/sh
+# rm-odex.fail: the live odex cannot be removed (a failure after the new APK is in place)
+if [ -e "$MOCK/rm-odex.fail" ]; then
+    for _a; do
+        case "$_a" in */system/app/RightScreenHome.odex) echo "rm: Read-only file system" >&2; exit 1 ;; esac
+    done
+fi
+exec /usr/bin/rm "$@"
 E
 stub md5 <<'E'
 #!/bin/sh
@@ -205,7 +237,7 @@ new_case() {
     done
     sys_md5 > "$X/before.md5"
     export MOCK=$X MOCK_PRODUCT=$GOOD
-    unset MOCK_DF_SYSTEM MOCK_DF_DATA
+    unset MOCK_DF_SYSTEM MOCK_DF_DATA MOCK_ANDROID_DOWN
 }
 sys_md5() { (cd "$R" && find system -type f | LC_ALL=C sort | while read -r _f; do md5sum "$_f"; done); }
 # the hooks, run as NEMESIS runs them: preinstall from the staging dir, then the package is
@@ -290,7 +322,6 @@ check "/system untouched"                 sys_same "$X/before.md5"
 check "panel enabled"                     panel_enabled
 check "no build dir"                      no_build_dir
 end_case
-rm -f "$T/changed.apk"
 
 # ---- 5 remount fails during post (preinstall's remount check passes)
 new_case remount
@@ -314,6 +345,67 @@ check "log says why"                      grep -q "FAIL: not enough free space o
 check "/system untouched"                 sys_same "$X/before.md5"
 check "panel enabled"                     panel_enabled
 check "no build dir"                      no_build_dir
+end_case
+
+# ---- 7 a step fails after the new APK is in place (the live odex cannot be removed)
+new_case undo
+check "pre.sh exits 0"                    run_pre
+: > "$X/rm-odex.fail"
+check "post.sh exits 1"                   fails run_post
+check "the new APK was written first"     grep -q "^wrote .*RightScreenHome.apk$" "$X/post.out"
+check "the stock APK was written back"    grep -q "^restored .*RightScreenHome.apk$" "$X/post.out"
+check "/system byte-identical to stock"   sys_same "$X/before.md5"
+check "panel enabled"                     panel_enabled
+check "undo toast says restored + uninstall" \
+    called "the split-screen panel was restored to stock. Uninstall HKG Climate Page in NEMESIS."
+check "no reboot"                         test ! -e "$X/rebooted"
+check "no temp file left in /system/app"  sh -c "! ls '$R/system/app' | grep -q tmp"
+check "no dalvik entry left"              sh -c "! ls '$R/data/dalvik-cache' | grep -q RightScreenHome"
+end_case
+
+# ---- 8 postinstall killed during dexopt (APK replaced, odex removed): the EXIT trap restores
+new_case killed
+check "pre.sh exits 0"                    run_pre
+: > "$X/dexopt.kill"
+check "post.sh exits nonzero"             fails run_post
+check "the trap put the stock files back" grep -q "postinstall ended during the swap" "$X/post.out"
+check "/system byte-identical to stock"   sys_same "$X/before.md5"
+check "panel enabled"                     panel_enabled
+check "no reboot"                         test ! -e "$X/rebooted"
+end_case
+
+# ---- 9 a kept backup, and a live APK that is neither stock nor ours
+new_case foreign
+mkdir -p "$R/$BAK"
+ln "$T/stock/RightScreenHome.apk" "$T/stock/RightScreenHome.odex" "$R/$BAK/"
+check "pre.sh exits 0 (backup kept, live stock)" run_pre
+rm -f "$R/$LIVE.apk"; cp "$T/changed.apk" "$R/$LIVE.apk"
+sys_md5 > "$X/before-post.md5"
+check "post.sh exits 1"                   fails run_post
+check "log says why"                      grep -q "neither the stock APK nor ours" "$X/post.out"
+check "/system untouched"                 sys_same "$X/before-post.md5"
+check "panel enabled"                     panel_enabled
+check "failure toast sent"                called "HKG Climate Page: install failed; nothing was changed."
+check "pre.sh now refuses too"            fails run_pre
+check "backup still the stock pair"       sh -c "cmp -s '$R/$BAK/RightScreenHome.apk' '$T/stock/RightScreenHome.apk' && cmp -s '$R/$BAK/RightScreenHome.odex' '$T/stock/RightScreenHome.odex'"
+end_case
+rm -f "$T/changed.apk"
+
+# ---- 10 Android down (NEMESIS installing before Android starts): no hold; am, pm and
+# settings fail, which is not fatal
+new_case android-down
+export MOCK_ANDROID_DOWN=1
+check "pre.sh exits 0"                    run_pre
+check "post.sh exits 0"                   run_post
+check "live APK md5 is the manifest's"    test "$(md5sum < "$R/$LIVE.apk" | cut -d' ' -f1)" = "$WANT_MD5"
+check "panel not stopped"                 not_called "pm disable"
+check "service start tried"               called "am startservice -n hkgclimate.app/.ClimateService"
+check "reboot requested"                  test -e "$X/rebooted"
+check "preun.sh exits 0"                  run_preun
+check "page lists tried"                  called "settings get system ss_setting"
+check "/system byte-identical to before install" sys_same "$X/before.md5"
+check "no backup dir left"                test ! -e "$R/$BAK"
+check "panel enabled"                     panel_enabled
 end_case
 
 if [ $FAILS -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
