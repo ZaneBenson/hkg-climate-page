@@ -8,7 +8,10 @@ and builds the presets.
 
 **Status: test build 1: installable for on-car testing; seat taps are logged, not sent.**
 The owner's on-car checklist is [docs/testing/2026-10-30-test-build-1.md](docs/testing/2026-10-30-test-build-1.md).
-To build: `tools/toolchain.sh fetch`, then `tools/build-package.sh` (writes `dist/hkg-climate-page.zip`).
+To build: `tools/toolchain.sh fetch`, then `tools/build-app.sh`, then `tools/build-package.sh`
+(writes `dist/hkg-climate-page.zip`). The first `build-app.sh` run creates the signing key in
+`private/keys/`: back it up. The panel patch files are committed, so `tools/build-panel.sh` is
+not needed to package.
 
 Target car: 2023 US Hyundai Ioniq 5 (`NEEV23.USA.`, firmware 260507).
 
