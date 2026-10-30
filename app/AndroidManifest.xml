@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="hkgclimate.app"
+    android:versionCode="1"
+    android:versionName="0.1.0-test1">
+
+    <uses-sdk android:minSdkVersion="19" android:targetSdkVersion="19" />
+
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+
+    <application android:label="Climate Page">
+        <uses-library android:name="automotive" android:required="false" />
+
+        <service
+            android:name="hkgclimate.app.ClimateService"
+            android:exported="true" />
+
+        <activity
+            android:name="hkgclimate.app.SettingsActivity"
+            android:label="Climate Page">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
