@@ -17,7 +17,7 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Read-only collection kit (`kit/`, `tests/kit/run.sh`) | Built, 30 host checks pass, reviewed, run on the owner's car. |
 | Plan 2 (our app, panel patch, package: test build 1) | Done, installed and tested on the owner's car (2026-10-30). Seat taps are logged, not sent. |
 | Seat command | Approved by the owner on 2026-10-30 (see "Seat command approval"). Sent only by test build 2, once the owner turns approval on. |
-| Plan 3 (test build 2: approved seat command behind an approval switch) | Built (`0.2.0-test2`), not yet on the car. Checklist: `docs/testing/2026-10-30-test-build-2.md`. |
+| Plan 3 (test build 2: approved seat command behind an approval switch) | Installed and tested on the owner's car (2026-10-30): seat taps change both seats through heat and cool. |
 | Branches | Everything merged into `main` (2026-10-30). |
 
 ## Seat command approval (2026-10-30)
@@ -86,6 +86,20 @@ The owner approved this command for the sending build:
     settings afterwards (`ss_setting_dr1` became `3,4,2`), and the climate page survived.
   - Unrelated: the NEMESIS Manager app crashed once (`SecurityException`, `getTasks()` needs
     `GET_TASKS`, from its `DialogActivity.onYes`), apparently when its dialog closed.
+- **Test build 2 on the car** (2026-10-30, kit run at 17:22 from the combined stick via
+  NEMESIS Manager's "Run USB NEMESIS.sh"):
+  - **Our ordinary app uid can set the seats.** 11 taps logged `sent …` (passenger 4, 3, 2;
+    driver 8, 7, 6, 2; passenger 8, 7, 6, 2). Each was followed within ~50 ms by USMService
+    `[SND] USM_Front_Seat_Heat_SET_C_REQ(0x1128)` and `[RCV] …SET_M_RESP(0x9128)` reporting the
+    same state, and our app logged no `no change`, `send failed` or `E/USMManager` line. Options
+    6/6. No system-uid helper is needed.
+  - Before our taps, USMService also sent driver 5, 4, 3, 2 and passenger 5 with no `sent` line
+    from us: the owner using the stock controls. Our next passenger taps then stepped within
+    cool (4, 3, 2), as designed.
+  - **Update needs a restart in between.** The update ran the old package's uninstall (stock
+    panel restored), then the new install refused at once: `/system 109977 KB (need 176357)`.
+    The replaced patched APK still took space until the restart (probably still held open). A
+    second try after a restart installed cleanly (`/system 272076 KB`).
 
 ## Split-screen panel (RightScreenHome) — page integration
 
@@ -238,7 +252,6 @@ How Leafia rebuilds and installs patched stock system apps (from its repo,
 - **Page-list editor app** (probably ThemeSettings.apk) not collected. Page 4 survives the
   owner editing the list (seen on the car; either the editor keeps it or our app puts it back),
   so collecting it is no longer needed.
-- **Writing seat values from an ordinary app uid** not yet tested (reads work).
 
 ## Tooling on this machine
 
