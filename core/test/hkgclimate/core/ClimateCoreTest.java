@@ -179,7 +179,7 @@ public class ClimateCoreTest {
     private int tapKind(Seat s) { return core.pageState().seatTapKind[s.ordinal()]; }
 
     @Test
-    public void passengerOffWithColdOutsideTemperatureTapKindCools() {
+    public void onCoolSeatTapKindCoolsWhateverTheOutsideSays() {
         // Review Focus 1: the passenger at 5 is on (cool), whatever the outside says
         ready(2, 5, F48);
         assertEquals(2, tapKind(Seat.PASSENGER));

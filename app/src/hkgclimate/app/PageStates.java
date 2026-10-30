@@ -27,8 +27,6 @@ final class PageStates {
     static final String D_TEMP_READY = "tempReady";
     /** String: the last page list write failure; null when there is none. */
     static final String D_PAGE_LIST_ERROR = "pageListError";
-    /** boolean: the seat command approval, as the service reads it from the preferences. */
-    static final String D_APPROVED = "approved";
     /** String: the seat sender's last result, or the latest "no change" text, whichever came last; null before any. */
     static final String D_LAST_SEND = "lastSend";
 
@@ -41,7 +39,6 @@ final class PageStates {
         b.putIntArray(PageLink.K_SEAT_KIND, s.seatKind.clone());
         b.putBooleanArray(PageLink.K_SEAT_ENABLED, s.seatEnabled.clone());
         b.putIntArray(PageLink.K_SEAT_TAP_KIND, s.seatTapKind.clone());
-        b.putBoolean(PageLink.K_TEST_MODE, false);
         if (debug != null) b.putBundle(PageLink.K_DEBUG, debug);
         return b;
     }

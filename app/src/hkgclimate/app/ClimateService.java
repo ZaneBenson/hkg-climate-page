@@ -90,7 +90,6 @@ public class ClimateService extends Service {
                     Bundle d = car.debug();
                     PageListKeeper k = keeper;
                     d.putString(PageStates.D_PAGE_LIST_ERROR, k == null ? null : k.lastError());
-                    d.putBoolean(PageStates.D_APPROVED, prefs.isSeatApproved());
                     d.putString(PageStates.D_LAST_SEND, lastSend);
                     return d;
                 }

@@ -9,8 +9,6 @@ final class Prefs {
     static final String FILE = "hkgclimate";
     static final String KEY_SWITCH_TEMP_F = "switch_temp_f";
     static final String KEY_PAGE_ENABLED = "page_enabled";
-    /** The owner's approval to send the seat command; off by default (and after a reinstall). */
-    static final String KEY_SEAT_APPROVED = "seat_command_approved";
 
     private final SharedPreferences prefs;
 
@@ -29,10 +27,6 @@ final class Prefs {
     boolean isPageEnabled() { return prefs.getBoolean(KEY_PAGE_ENABLED, true); }
 
     void setPageEnabled(boolean enabled) { prefs.edit().putBoolean(KEY_PAGE_ENABLED, enabled).apply(); }
-
-    boolean isSeatApproved() { return prefs.getBoolean(KEY_SEAT_APPROVED, false); }
-
-    void setSeatApproved(boolean approved) { prefs.edit().putBoolean(KEY_SEAT_APPROVED, approved).apply(); }
 
     /** SharedPreferences keeps only a weak reference: the caller must hold the listener. */
     void register(SharedPreferences.OnSharedPreferenceChangeListener l) {

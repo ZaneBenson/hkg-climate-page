@@ -100,6 +100,26 @@ seat_calls_only_in() {
         }
         END { exit !(n > 0 && bad == 0) }' "$1"
 }
+# dex_has_string <classes.dex> <string>: the dex string table holds exactly this string
+dex_has_string() {
+    "$PY" -I - "$1" "$2" <<'PY'
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+if d[:4] != b"dex\n":
+    sys.exit(2)
+size, off = struct.unpack_from("<II", d, 0x38)
+for i in range(size):
+    (p,) = struct.unpack_from("<I", d, off + 4 * i)
+    while d[p] & 0x80:
+        p += 1
+    p += 1
+    if d[p:d.index(b"\0", p)].decode("utf-8", "replace") == sys.argv[2]:
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+# dex_lacks_string <classes.dex> <string>: the table lacks it (a dex that cannot be read fails too)
+dex_lacks_string() { dex_has_string "$@"; [ $? -eq 1 ]; }
 # usm_strings_ok <classes.dex>: no string in the dex names the stock seat service other than the
 # one allowed type descriptor Lcom/hkmc/usm/USMManager; (a service looked up by name, or a class
 # loaded by name, would otherwise pass the code checks)
@@ -233,8 +253,13 @@ check "self-test: the seat-call check fails a listing with no seat call" \
     send_none_fails "$ST/caller/code.txt"
 
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
-check "versionName is 0.2.0-test2" grep -q "versionName='0.2.0-test2'" "$TMP/badging"
-check "versionCode is 2" grep -q "versionCode='2'" "$TMP/badging"
+check "versionName is 1.0.0" grep -q "versionName='1.0.0'" "$TMP/badging"
+check "versionCode is 3" grep -q "versionCode='3'" "$TMP/badging"
+# the approval flow is gone: no commander class, no dialog, no preference key
+check "dex has no TestModeCommander class" sh -c "! grep -q 'Lhkgclimate/app/TestModeCommander;' $TMP/dex.txt"
+check "code has no AlertDialog reference (settings screen)" sh -c "! grep -q 'Landroid/app/AlertDialog' $TMP/dexcode.txt"
+check "dex strings have no seat_command_approved key" dex_lacks_string "$TMP/classes.dex" seat_command_approved
+check "self-test: dex_has_string finds a string the dex holds" dex_has_string "$TMP/classes.dex" switch_temp_f
 check "sdkVersion is 19" grep -q "^sdkVersion:'19'" "$TMP/badging"
 check "automotive library is not required" grep -q "^uses-library-not-required:'automotive'" "$TMP/badging"
 check "WRITE_SETTINGS is requested" grep -q "uses-permission: name='android.permission.WRITE_SETTINGS'" "$TMP/badging"

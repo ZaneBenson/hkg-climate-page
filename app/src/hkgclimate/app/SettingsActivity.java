@@ -1,10 +1,8 @@
 package hkgclimate.app;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Binder;
@@ -30,7 +28,6 @@ import hkgclimate.link.PageLink;
  * The settings screen. Views are built in code. It learns the car's values the way the page does:
  * it binds to our ClimateService and subscribes through the PageLink binder with its own
  * callback. The switch temperature is stored in whole degrees F and shown in the car's unit.
- * The seat command approval is stored only after the owner confirms it in a dialog.
  */
 public class SettingsActivity extends Activity {
     private static final String TAG = CarLink.TAG;
@@ -52,10 +49,7 @@ public class SettingsActivity extends Activity {
     private Button minus;
     private Button plus;
     private TextView statusText;
-    private TextView modeNote;
-    private CheckBox approveBox;
     private TextView seatStatus;
-    private AlertDialog confirmDialog;
 
     // ours alone: the service calls it with every state; main-thread work is posted
     private final Binder callback = new Binder() {
@@ -125,15 +119,6 @@ public class SettingsActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        // an open confirmation counts as a Cancel: its dismiss listener unchecks the box
-        AlertDialog d = confirmDialog;
-        if (d != null) {
-            try {
-                d.dismiss();
-            } catch (Throwable t) {
-                Log.w(TAG, "closing the confirmation failed", t);
-            }
-        }
         disconnect();
         super.onDestroy();
     }
@@ -205,74 +190,13 @@ public class SettingsActivity extends Activity {
         statusText = text("", 18);
         root.addView(statusText);
 
-        modeNote = text("", 18);
-        modeNote.setPadding(0, dp(24), 0, dp(8));
-        root.addView(modeNote);
-
-        approveBox = new CheckBox(this);
-        approveBox.setText("Send seat commands to the car");
-        approveBox.setTextSize(22);
-        // the stored state first, then the listener, so setting it here stores nothing
-        approveBox.setChecked(prefs.isSeatApproved());
-        approveBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton b, boolean isChecked) {
-                onApproveChanged(isChecked);
-            }
-        });
-        approveBox.setPadding(0, dp(8), 0, dp(8));
-        root.addView(approveBox);
-
         seatStatus = text("", 18);
+        seatStatus.setPadding(0, dp(24), 0, 0);
         root.addView(seatStatus);
 
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         return scroll;
-    }
-
-    /** Unchecking stores false at once; checking stores true only after "Turn on" in the dialog. */
-    private void onApproveChanged(boolean isChecked) {
-        try {
-            if (!isChecked) {
-                prefs.setSeatApproved(false);
-            } else if (!prefs.isSeatApproved() && confirmDialog == null) {
-                confirmApproval();
-            }
-        } catch (Throwable t) {
-            Log.w(TAG, "changing the seat command approval failed", t);
-            // a dialog that failed to show must not block the next try, and a box left checked
-            // must not look like an approval that was never stored
-            confirmDialog = null;
-            approveBox.setChecked(prefs.isSeatApproved());
-        }
-        refresh();
-    }
-
-    private void confirmApproval() {
-        final boolean[] yes = {false};
-        final AlertDialog d = new AlertDialog.Builder(this)
-                .setMessage("The seat buttons on the climate page will change the seats. Turn this on?")
-                .setPositiveButton("Turn on", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        yes[0] = true;
-                        prefs.setSeatApproved(true);
-                    }
-                })
-                .setNegativeButton("Cancel", null)
-                .create();
-        // Cancel, Back, a touch outside or the screen closing: all end here without "Turn on"
-        d.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override
-            public void onDismiss(DialogInterface dialog) {
-                if (confirmDialog == d) confirmDialog = null;
-                if (!yes[0]) approveBox.setChecked(false);
-                refresh();
-            }
-        });
-        confirmDialog = d;
-        d.show();
     }
 
     /** One step of the switch temperature in the shown unit. Only a press writes the preference. */
@@ -303,8 +227,6 @@ public class SettingsActivity extends Activity {
             minus.setEnabled(SwitchTemp.fromDisplay(shown - 1, rawUnit) < stored);
             plus.setEnabled(SwitchTemp.fromDisplay(shown + 1, rawUnit) > stored);
             statusText.setText(statusLines());
-            modeNote.setText(prefs.isSeatApproved() ? "Seat taps change the seats."
-                    : "Test mode: seat taps are logged, not sent.");
             String last = debug == null ? null : debug.getString(PageStates.D_LAST_SEND);
             seatStatus.setText("Seat command: " + (last == null ? "nothing sent yet" : last));
         } catch (Throwable t) {
@@ -334,8 +256,6 @@ public class SettingsActivity extends Activity {
             sb.append("Car temperature unit: ").append(d.getInt(PageStates.D_UNIT, -1)).append('\n');
             String err = d.getString(PageStates.D_PAGE_LIST_ERROR);
             sb.append("Page lists: ").append(err == null ? "ok" : err).append('\n');
-            sb.append("Seat commands (as the service sees it): ")
-                    .append(d.getBoolean(PageStates.D_APPROVED) ? "on" : "off").append('\n');
         }
         return sb.toString();
     }
