@@ -26,7 +26,10 @@ export PATH=${KIT_TEST_PATH:+$KIT_TEST_PATH:}/sbin:/vendor/bin:/system/sbin:/sys
 export LD_LIBRARY_PATH=/vendor/lib:/system/lib
 
 SYS=${KIT_SYSROOT:-}
-KIT=$(pwd)
+# The drive is the folder this script is in: NEMESIS's USB handler starts it from the drive
+# root, but NEMESIS Manager's "Run USB NEMESIS.sh" calls it by full path from elsewhere.
+case "$0" in */*) KIT=${0%/*} ;; *) KIT=. ;; esac
+KIT=$(cd "$KIT" && pwd) || exit 1
 OUT=$KIT/HKGCLIMATE
 STOCK=$OUT/stock
 SUM=$OUT/summary.txt

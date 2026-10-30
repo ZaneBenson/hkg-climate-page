@@ -29,14 +29,16 @@ fake_root() {
     done
 }
 
-# run_kit <fake root> <drive>: run the kit from the drive, as NEMESIS does
+# run_kit <fake root> <drive>: run the kit from the drive, as NEMESIS's USB handler does
+# (script on the drive, started from the drive root)
 run_kit() {
     mkdir -p "$2"
+    cp "$ROOT/kit/NEMESIS.sh" "$2/"
     cp "$ROOT/kit/FILES" "$2/" 2>/dev/null
     # FAKE_MD5 defaults to the owner's stock automotive.odex
     (cd "$2" && KIT_SYSROOT=$1 KIT_TEST_PATH="$STUBS:/usr/bin:/bin" FAKE_AM_LOG=$1/am.log \
         FAKE_SERVICE_LOG=$1/service.log FAKE_MD5=${FAKE_MD5-85f94dc6b9f7b331b8edcb0ec2183261} \
-        sh "$ROOT/kit/NEMESIS.sh" > "$1/kit.out" 2>&1)
+        sh NEMESIS.sh > "$1/kit.out" 2>&1)
 }
 
 last_line_done() { _l=; while read -r _x; do _l=$_x; done < "$1"; [ "$_l" = done ]; }
@@ -113,6 +115,17 @@ check "install log copy failure finishes" last_line_done "$D/HKGCLIMATE/summary.
 R=$T/f; D=$T/f-drive; fake_root "$R"; run_kit "$R" "$D"
 touch "$D/HKGCLIMATE/stale"; run_kit "$R" "$D"
 check "old output replaced"        sh -c "test ! -e '$D/HKGCLIMATE/stale' && test -s '$D/HKGCLIMATE/summary.txt'"
+
+# --- started by NEMESIS Manager's "Run USB NEMESIS.sh": the kit is called by its full path
+# from some other folder, and must still write to its own drive
+R=$T/m; D=$T/m-drive; fake_root "$R"; mkdir -p "$D" "$T/elsewhere"
+cp "$ROOT/kit/NEMESIS.sh" "$ROOT/kit/FILES" "$D/"
+(cd "$T/elsewhere" && KIT_SYSROOT=$R KIT_TEST_PATH="$STUBS:/usr/bin:/bin" FAKE_AM_LOG=$R/am.log \
+    FAKE_SERVICE_LOG=$R/service.log FAKE_MD5=85f94dc6b9f7b331b8edcb0ec2183261 \
+    sh "$D/NEMESIS.sh" > "$R/kit.out" 2>&1)
+check "run by full path writes to the drive" last_line_done "$D/HKGCLIMATE/summary.txt"
+check "run by full path copies the files"    cmp -s "$R/system/app/RightScreenHome.apk" "$D/HKGCLIMATE/stock/app/RightScreenHome.apk"
+check "run by full path leaves the cwd alone" test ! -e "$T/elsewhere/HKGCLIMATE"
 
 if [ $FAILS -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
 echo "all checks passed"

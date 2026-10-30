@@ -31,6 +31,9 @@ Then:
 2. `tools/toolchain.sh check`: every line should say `ok` (the venv line only matters for the
    panel build)
 3. `tools/build-app.sh`, then `tools/build-package.sh` (writes `dist/hkg-climate-page.zip`)
+4. Optional: `tools/build-kit.sh` and `tools/build-usb.sh` (writes `dist/hkg-climate-usb.zip`:
+   the package plus the read-only kit on one USB stick; the install runs on insert, the kit
+   from NEMESIS Manager's "Run USB NEMESIS.sh")
 
 The first `build-app.sh` run creates the signing key in `private/keys/`: back it up. The panel
 patch files are committed, so `tools/build-panel.sh` is not needed to package.
