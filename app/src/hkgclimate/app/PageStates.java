@@ -27,6 +27,10 @@ final class PageStates {
     static final String D_TEMP_READY = "tempReady";
     /** String: the last page list write failure; null when there is none. */
     static final String D_PAGE_LIST_ERROR = "pageListError";
+    /** boolean: the seat command approval, as the service reads it from the preferences. */
+    static final String D_APPROVED = "approved";
+    /** String: the seat sender's last result, or the latest "no change" text, whichever came last; null before any. */
+    static final String D_LAST_SEND = "lastSend";
 
     /** The page's Bundle (PageLink keys); debug, when not null, goes under K_DEBUG. */
     static Bundle toBundle(PageState s, Bundle debug) {

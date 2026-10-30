@@ -13,12 +13,14 @@ import com.hkmc.datc.DATCTemperatureListener;
 import hkgclimate.core.ClimateCore;
 import hkgclimate.core.OutsideTemp;
 import hkgclimate.core.Seat;
+import hkgclimate.core.SendWatch;
 
 /**
  * Reads the seat heaters and the outside temperature from the stock services and feeds them to
- * the core. Everything runs on the main looper (start, stop and the stock callbacks). It only
- * reads: nothing here sends a command. Each car part (seats, temperature) is set up on its own;
- * one that fails is logged and tried again every 10 seconds until stop().
+ * the core, and the seat states to the send watch. Everything runs on the main looper (start, stop
+ * and the stock callbacks). It only reads: nothing here sends a command. Each car part (seats,
+ * temperature) is set up on its own; one that fails is logged and tried again every 10 seconds
+ * until stop().
  */
 final class CarLink implements PageLinkBinder.DebugSource {
     static final String TAG = "HkgClimate";
@@ -27,6 +29,7 @@ final class CarLink implements PageLinkBinder.DebugSource {
 
     private final Context context;
     private final ClimateCore core;
+    private final SendWatch watch;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable retry = new Runnable() {
         @Override public void run() { attempt(); }
@@ -55,9 +58,10 @@ final class CarLink implements PageLinkBinder.DebugSource {
     private int stateF = UNSET;
     private int unit = UNSET;
 
-    CarLink(Context context, ClimateCore core) {
+    CarLink(Context context, ClimateCore core, SendWatch watch) {
         this.context = context;
         this.core = core;
+        this.watch = watch;
     }
 
     /** Run (on the main thread) after a ready flag or a raw debug value changes. */
@@ -148,6 +152,8 @@ final class CarLink implements PageLinkBinder.DebugSource {
         astState = m.getAstSeatHeatState();
         core.onSeatState(Seat.DRIVER, drvState);
         core.onSeatState(Seat.PASSENGER, astState);
+        watch.onState(Seat.DRIVER, drvState);
+        watch.onState(Seat.PASSENGER, astState);
         seatListener = new BCMVehicleStatusListener() {
             @Override
             public void onDrvSeatHeaterStatusChanged(int state) {
@@ -155,6 +161,7 @@ final class CarLink implements PageLinkBinder.DebugSource {
                     boolean changed = drvState != state;
                     drvState = state;
                     core.onSeatState(Seat.DRIVER, state);
+                    watch.onState(Seat.DRIVER, state);
                     if (changed) debugChanged();
                 } catch (Throwable t) {
                     Log.w(TAG, "driver seat callback failed", t);
@@ -167,6 +174,7 @@ final class CarLink implements PageLinkBinder.DebugSource {
                     boolean changed = astState != state;
                     astState = state;
                     core.onSeatState(Seat.PASSENGER, state);
+                    watch.onState(Seat.PASSENGER, state);
                     if (changed) debugChanged();
                 } catch (Throwable t) {
                     Log.w(TAG, "passenger seat callback failed", t);

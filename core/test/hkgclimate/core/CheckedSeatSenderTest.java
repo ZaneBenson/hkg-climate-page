@@ -119,4 +119,71 @@ public class CheckedSeatSenderTest {
         assertEquals("send failed setFrontSeatHeatAstStep 3: java.lang.NoSuchMethodError: "
                 + "setFrontSeatHeatAstStep", sender.lastResult());
     }
+
+    @Test
+    public void aNullSeatIsRefusedWithNoCall() {
+        sender.set(null, 3);
+        assertTrue(calls.calls.isEmpty());
+        assertEquals(1, log.lines.size());
+        assertEquals("send refused <unknown seat> 3", log.lines.get(0));
+        assertEquals("send refused <unknown seat> 3", sender.lastResult());
+        assertNull(watch.overdue(1000000));
+    }
+
+    static class ThrowingLog implements SendLog {
+        int lines;
+        public void line(String text) {
+            lines++;
+            throw new IllegalStateException("log broken");
+        }
+    }
+
+    @Test
+    public void aThrowingLogDoesNotEscapeOrRepeatTheCall() {
+        ThrowingLog broken = new ThrowingLog();
+        CheckedSeatSender s = new CheckedSeatSender(calls, broken, watch, new Clock() {
+            public long now() { return time; }
+        });
+        s.set(Seat.DRIVER, 8);
+        assertEquals(1, calls.calls.size());
+        assertEquals(1, broken.lines);
+        assertEquals("sent setFrontSeatHeatDrvStep 8", s.lastResult());
+        // still watched: the broken log did not cut the send short
+        assertEquals("no change after 3 s: setFrontSeatHeatDrvStep 8",
+                watch.overdue(1000 + SendWatch.WAIT_MS));
+
+        // the refused and failed paths too
+        s.set(Seat.DRIVER, 9);
+        assertEquals(1, calls.calls.size());
+        assertEquals("send refused setFrontSeatHeatDrvStep 9", s.lastResult());
+        s.set(null, 8);
+        assertEquals(1, calls.calls.size());
+        calls.toThrow = new SecurityException("denied");
+        s.set(Seat.PASSENGER, 3);
+        assertEquals(2, calls.calls.size());
+        assertEquals("send failed setFrontSeatHeatAstStep 3: java.lang.SecurityException: denied",
+                s.lastResult());
+    }
+
+    @Test
+    public void aThrowingClockDoesNotEscapeOrRepeatTheCall() {
+        CheckedSeatSender s = new CheckedSeatSender(calls, log, watch, new Clock() {
+            public long now() { throw new IllegalStateException("clock broken"); }
+        });
+        s.set(Seat.PASSENGER, 5);
+        assertEquals(1, calls.calls.size());
+        assertEquals("sent setFrontSeatHeatAstStep 5", s.lastResult());
+        assertEquals("sent setFrontSeatHeatAstStep 5", log.lines.get(0));
+    }
+
+    @Test
+    public void aThrowableWhoseTextThrowsDoesNotEscapeOrRepeatTheCall() {
+        calls.toThrow = new RuntimeException() {
+            @Override public String toString() { throw new IllegalStateException("no text"); }
+        };
+        sender.set(Seat.DRIVER, 4);
+        assertEquals(1, calls.calls.size());
+        assertTrue(sender.lastResult(), sender.lastResult()
+                .startsWith("send failed setFrontSeatHeatDrvStep 4: hkgclimate.core.CheckedSeatSenderTest$"));
+    }
 }
