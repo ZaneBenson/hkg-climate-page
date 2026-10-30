@@ -5,12 +5,14 @@
 # usage: tools/build-panel.sh
 #   writes private/work/classes.dex, build/RightScreenHome.apk (both private, never committed) and
 #   package/patch/{RightScreenHome.lpd,stock,manifest}; prints the dex md5, delta size and APK md5
+# Build inputs come from the read-only private/stock/260507; kit output folders (such as
+# private/HKGCLIMATE/stock, which holds whatever the car has now) are never used as build input.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 eval "$("$ROOT/tools/toolchain.sh" env)"
 cd "$ROOT"
 
-STOCK=private/HKGCLIMATE/stock/app
+STOCK=private/stock/260507/app
 W=private/work
 STOCK_SMALI=$W/panel-stock-smali
 SMALI_DIR=$W/panel-smali

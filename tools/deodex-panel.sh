@@ -3,14 +3,16 @@
 # baksmali at API 18 (Dalvik's field layout). The boot class path comes from the init.environ.rc
 # next to the app folder (its .jar names as .odex). If baksmali skips classes, it runs again with
 # every other framework odex after the boot entries. The output folder appears only when complete.
+# Build inputs come from the read-only private/stock/260507; kit output folders (such as
+# private/HKGCLIMATE/stock, which holds whatever the car has now) are never used as build input.
 # usage: tools/deodex-panel.sh [<stock app dir> [<framework dir> [<out dir>]]]
-#        defaults: private/HKGCLIMATE/stock/app  ~/code/LEAFIA/private/stock/framework
-#                  private/work/panel-stock-smali
+#        defaults: private/stock/260507/app (init.environ.rc: private/stock/260507/init.environ.rc)
+#                  ~/code/LEAFIA/private/stock/framework  private/work/panel-stock-smali
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 eval "$("$ROOT/tools/toolchain.sh" env)"
 
-APP=${1:-$ROOT/private/HKGCLIMATE/stock/app}
+APP=${1:-$ROOT/private/stock/260507/app}
 FW=${2:-$HOME/code/LEAFIA/private/stock/framework}
 OUT=${3:-$ROOT/private/work/panel-stock-smali}
 RC=$(dirname "$APP")/init.environ.rc

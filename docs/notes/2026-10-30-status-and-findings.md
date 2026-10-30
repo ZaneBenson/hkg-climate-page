@@ -258,3 +258,6 @@ How Leafia rebuilds and installs patched stock system apps (from its repo,
   Android log.
 - `~/code/LEAFIA/private/stock/` (Leafia kit runs): framework (incl. `automotive.jar`,
   `automotive-service.jar`), projection apps, HKMC_Climate, Launcher_WP3, SystemUI.
+- Build inputs come from `private/stock/260507/` (read-only: verified stock RightScreenHome apk +
+  odex and `init.environ.rc`); kit output folders are never used as build input (a kit run on the
+  patched car copies the patched panel into `private/HKGCLIMATE/stock`).

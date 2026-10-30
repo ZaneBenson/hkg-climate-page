@@ -11,8 +11,9 @@
 # that is neither stock nor ours; Android down. Also checks the zip's layout
 # and that tools/build-package.sh refuses commands the head unit's shell lacks.
 #
-# Needs private/HKGCLIMATE/stock (app/RightScreenHome.apk, .odex, init.environ.rc); without
-# it prints "SKIP: no stock files" and exits 2. QEMU_ARM runs the package's ARM lpatch and
+# Needs private/stock/260507 (app/RightScreenHome.apk, .odex, init.environ.rc), the read-only
+# verified stock files; kit output folders are never used as build input. Without them it
+# prints "SKIP: no stock files" and exits 2. QEMU_ARM runs the package's ARM lpatch and
 # MOCK_SH runs the hooks (both from tools/toolchain.sh env; set MOCK_SH=mksh to override).
 #
 # The sandbox: hooks are rewritten with sed so /system/, /data/, /cache/, /storage/,
@@ -34,7 +35,7 @@
 # WARRANTY; see the GNU General Public License (LICENSE) for details.
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 ZIP=${1:-$ROOT/dist/hkg-climate-page.zip}
-STOCK=$ROOT/private/HKGCLIMATE/stock
+STOCK=$ROOT/private/stock/260507
 for _f in app/RightScreenHome.apk app/RightScreenHome.odex init.environ.rc; do
     [ -s "$STOCK/$_f" ] || { echo "SKIP: no stock files"; exit 2; }
 done
@@ -155,6 +156,7 @@ rm -rf "$T/usb"
 # ---- the sandbox
 mkdir -p "$T/stock" "$T/stub"
 cp "$STOCK/app/RightScreenHome.apk" "$STOCK/app/RightScreenHome.odex" "$T/stock/"
+chmod u+w "$T/stock/RightScreenHome.apk" "$T/stock/RightScreenHome.odex"  # the source is read-only
 cp "$T/inner/bin/lpatch" "$T/lpatch.arm"
 
 stub() { cat > "$T/stub/$1"; chmod 755 "$T/stub/$1"; }
@@ -265,7 +267,7 @@ new_case() {
     mkdir -p "$R/system/app" "$R/data/dalvik-cache" "$R/data/local/tmp" "$R/cache" "$R/storage/usb0" "$X/settings" "$STAGE"
     ln "$T/stock/RightScreenHome.odex" "$R/system/app/"
     if [ -n "$2" ]; then cp "$2" "$R/system/app/RightScreenHome.apk"; else ln "$T/stock/RightScreenHome.apk" "$R/system/app/"; fi
-    cp "$STOCK/init.environ.rc" "$R/init.environ.rc"
+    cp "$STOCK/init.environ.rc" "$R/init.environ.rc"; chmod u+w "$R/init.environ.rc"
     cp "$T/outer/NEMESIS.data" "$R/storage/usb0/NEMESIS.data"
     cp -R "$T/inner/." "$STAGE/"
     printf '#!/bin/sh\nexec %s %s "$@"\n' "$QEMU_ARM" "$T/lpatch.arm" > "$STAGE/bin/lpatch"
