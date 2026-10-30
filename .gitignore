@@ -6,3 +6,4 @@ private/
 *.jar
 *.dex
 .superpowers/
+build/
