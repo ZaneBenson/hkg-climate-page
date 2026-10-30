@@ -23,7 +23,7 @@ Target: 2023 US Ioniq 5, `NEEV23.USA.`, firmware 260507.
 - No manufacturer apps, libraries, jars or decompiled code in this repo: only our code,
   delta patches, checksums, and research notes naming classes/ids.
 - Stock files live outside the repo: `~/code/LEAFIA/private/stock` (first kit runs) and
-  `~/code/HKGCLIMATE` (this plugin's kit). Deodex scratch goes in a scratch folder.
+  `private/HKGCLIMATE` in this repo (this plugin's kit; `private/` is git-ignored). Deodex scratch goes in a scratch folder.
 
 ## Kit shell
 
