@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+    ro.build.product) echo "${FAKE_PRODUCT:-NEEV23.USA.0000.V015.012.260507}" ;;
+    *) echo "" ;;
+esac

@@ -1,0 +1,7 @@
+#!/bin/sh
+# settings get system <key>
+[ -n "$FAKE_SETTINGS_FAIL" ] && { echo "settings: Android not running" >&2; exit 1; }
+case "$3" in
+    ss_setting) echo "10,13,2" ;;
+    *) echo "null" ;;
+esac

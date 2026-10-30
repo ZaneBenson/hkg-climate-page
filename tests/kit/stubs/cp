@@ -1,0 +1,6 @@
+#!/bin/sh
+# real cp, except the file named in FAKE_CP_FAIL fails as if the drive were full
+if [ -n "$FAKE_CP_FAIL" ] && [ "${1##*/}" = "$FAKE_CP_FAIL" ]; then
+    echo "cp: write error: No space left on device" >&2; exit 1
+fi
+exec /usr/bin/cp "$@"

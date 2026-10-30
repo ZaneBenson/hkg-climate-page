@@ -1,0 +1,3 @@
+#!/bin/sh
+# service call <binder> <code>
+echo "Result: Parcel(00000000 00000002   '........')"

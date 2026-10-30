@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "Filesystem               Size     Used     Free   Blksize"
+echo "/system                  1.5G     1.3G   200.0M   4096"
+echo "/data                    5.0G     2.0G     3.0G   4096"

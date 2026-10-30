@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "10-30 08:32:45.190 D/ClimateManager( 1060): fake log line"

@@ -1,0 +1,11 @@
+# Stock files the hkg-climate kit copies, one absolute path per line.
+# Split-screen panel app (com.mobis.splitscreen.right)
+/system/app/RightScreenHome.apk
+/system/app/RightScreenHome.odex
+# Candidates for the split-screen settings screen (...splitscreensettings.SplitScreenSettings)
+/system/app/DisplaySettings.apk
+/system/app/DisplaySettings.odex
+/system/app/Settings_W.apk
+/system/app/Settings_W.odex
+/system/app/SettingsCommon.apk
+/system/app/SettingsCommon.odex
