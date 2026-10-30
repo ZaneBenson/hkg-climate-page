@@ -15,8 +15,23 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Design | Approved by the owner. Version 1 page layout "B" chosen. |
 | Plan 1 (kit, research, go/no-go) | Done. Decision: GO. |
 | Read-only collection kit (`kit/`, `tests/kit/run.sh`) | Built, 30 host checks pass, reviewed, run on the owner's car. |
-| Plan 2 (our app, panel patch, package: test build 1) | Done and built (`dist/hkg-climate-page.zip`). Full host test chain passes and the build is reproducible. Seat taps are logged, not sent. Not yet run on the car: checklist in `docs/testing/2026-10-30-test-build-1.md`. |
-| Branches | `main`: first commit (rules, design, plan). `feasibility`: kit, review fixes, research report, notes. `test-build-1`: plan 2 (app, panel patch, package, checklist). None merged. |
+| Plan 2 (our app, panel patch, package: test build 1) | Done, installed and tested on the owner's car (2026-10-30). Seat taps are logged, not sent. |
+| Seat command | Approved by the owner on 2026-10-30 (see "Seat command approval"). Not yet sent by any build. |
+| Branches | Everything merged into `main` (2026-10-30). |
+
+## Seat command approval (2026-10-30)
+
+The owner approved this command for the sending build:
+
+- **Service:** stock `com.hkmc.usm.USMManager` -> binder `com.hkmc.micom.usm`.
+- **Methods:** `setFrontSeatHeatDrvStep(int)` (driver), `setFrontSeatHeatAstStep(int)` (passenger).
+- **Values:** only 2 (off), 8/7/6 (heat high/mid/low), 5/4/3 (cool high/mid/low), as logged
+  from the stock climate controls on this car.
+- **Caller:** our app `hkgclimate.app` (an ordinary app uid). The stock climate app calls it as
+  `android.uid.phone`; whether the service accepts an ordinary uid is untested. If it refuses,
+  the fallback is a small NEMESIS helper running as the system uid.
+- **Gate:** one step per tap, only while the approval switch in our settings app is on; nothing
+  is sent at boot or on a state update.
 
 ## Design summary
 
@@ -54,6 +69,22 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
   Id 4 (climate) is in none of them. The owner's "energy" page is 0 or 21 (unconfirmed).
 - **Stock climate page**: the split screen has no Climate page on this car; the owner
   confirmed it isn't offered in the split-screen settings.
+- **Test build 1 on the car** (2026-10-30, hkg-climate kit run at 14:05):
+  - Install ran clean: stock checksums matched, `lpatch delta` and the streaming `zipadd`
+    produced the pinned md5s on the unit (dex `88f5adeb…`, APK `40244c54…`), dexopt and the
+    Dalvik cache prefill worked, and the panel restarted. The only WARN: `/system` was already
+    read-only again when the script remounted it ro.
+  - The patched panel runs: no crash or VerifyError from `com.mobis.splitscreen.right`, and the
+    climate page shows. The stock hidden climate view (`SplitScreenClimateView`) only logs its
+    usual page-change lines; it doesn't draw anything.
+  - Taps log `would set setFrontSeatHeatAstStep 5` (passenger off, outside at or above the
+    switch temperature, so cool high), once per tap.
+  - Our ordinary app reads the outside temperature and the seats: the settings screen showed
+    seat option 6 and display unit 2.
+  - Page 4 is in all three page lists. The owner edited the split-screen list in the stock
+    settings afterwards (`ss_setting_dr1` became `3,4,2`), and the climate page survived.
+  - Unrelated: the NEMESIS Manager app crashed once (`SecurityException`, `getTasks()` needs
+    `GET_TASKS`, from its `DialogActivity.onYes`), apparently when its dialog closed.
 
 ## Split-screen panel (RightScreenHome) — page integration
 
@@ -203,11 +234,10 @@ How Leafia rebuilds and installs patched stock system apps (from its repo,
 
 ## Not yet established
 
-- **Outside temperature from an ordinary app uid.** We know the source and the call (see
-  "Outside temperature" below), but our own uid hasn't received a reading on the car yet.
-- **Page-list editor app** (probably ThemeSettings.apk) not collected.
+- **Page-list editor app** (probably ThemeSettings.apk) not collected. Page 4 survives the
+  owner editing the list (seen on the car; either the editor keeps it or our app puts it back),
+  so collecting it is no longer needed.
 - **Writing seat values from an ordinary app uid** not yet tested (reads work).
-- **Dalvik verification** of a patched RightScreenHome can only be checked on the car.
 
 ## Tooling on this machine
 
