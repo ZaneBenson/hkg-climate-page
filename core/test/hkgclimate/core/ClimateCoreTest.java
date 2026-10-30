@@ -21,7 +21,7 @@ public class ClimateCoreTest {
     }
 
     private final Recorder rec = new Recorder();
-    private final ClimateCore core = new ClimateCore(rec, 60);
+    private final ClimateCore core = new ClimateCore(rec, rec, 60);
 
     private void ready(int driver, int passenger, OutsideTemp outside) {
         core.onSeatsReady(true);
@@ -60,7 +60,7 @@ public class ClimateCoreTest {
         int[] bad = {0, 9, -1};
         for (int v : bad) {
             Recorder r = new Recorder();
-            ClimateCore c = new ClimateCore(r, 60);
+            ClimateCore c = new ClimateCore(r, r, 60);
             c.onSeatsReady(true);
             c.onSeatOption(Seat.DRIVER, 6);
             c.onSeatState(Seat.DRIVER, v);
@@ -152,7 +152,7 @@ public class ClimateCoreTest {
 
     @Test
     public void topLineTexts() {
-        ClimateCore c = new ClimateCore(rec, 60);
+        ClimateCore c = new ClimateCore(rec, rec, 60);
         // nothing received yet
         assertEquals("Outside temperature unknown · taps will heat", c.pageState().top);
 
@@ -254,5 +254,118 @@ public class ClimateCoreTest {
         assertEquals("Outside 75 \u00b0F \u00b7 taps will cool", core.pageState().top);
         assertTrue(core.onTap(Seat.DRIVER, 2));
         assertEquals("DRIVER=5", rec.sent.get(1));
+    }
+
+    private static ClimateCore twoWay(Recorder sender, Recorder logOnly) {
+        return new ClimateCore(sender, logOnly, 60);
+    }
+
+    private static void readyCore(ClimateCore c) {
+        c.onSeatsReady(true);
+        c.onSeatOption(Seat.DRIVER, 6);
+        c.onSeatOption(Seat.PASSENGER, 6);
+        c.onSeatState(Seat.DRIVER, 2);
+        c.onSeatState(Seat.PASSENGER, 2);
+        c.onOutside(F48);
+    }
+
+    @Test
+    public void notApprovedByDefaultTapReachesOnlyTheLogOnlyCommander() {
+        Recorder sender = new Recorder();
+        Recorder logOnly = new Recorder();
+        ClimateCore c = twoWay(sender, logOnly);
+        readyCore(c);
+        assertTrue(c.pageState().testMode);
+        assertTrue(c.onTap(Seat.DRIVER, 1));
+        assertTrue(sender.sent.isEmpty());
+        assertEquals("[DRIVER=8]", logOnly.sent.toString());
+    }
+
+    @Test
+    public void approvedTapReachesOnlyTheSenderWithTheSameValue() {
+        Recorder sender = new Recorder();
+        Recorder logOnly = new Recorder();
+        ClimateCore c = twoWay(sender, logOnly);
+        readyCore(c);
+        c.setApproved(true);
+        assertFalse(c.pageState().testMode);
+        assertTrue(c.onTap(Seat.DRIVER, 1));
+        assertEquals("[DRIVER=8]", sender.sent.toString());
+        assertTrue(logOnly.sent.isEmpty());
+    }
+
+    @Test
+    public void approvalTurnedOffSendsTheNextTapToLogOnly() {
+        Recorder sender = new Recorder();
+        Recorder logOnly = new Recorder();
+        ClimateCore c = twoWay(sender, logOnly);
+        readyCore(c);
+        c.setApproved(true);
+        assertTrue(c.onTap(Seat.DRIVER, 1));
+        c.setApproved(false);
+        assertTrue(c.pageState().testMode);
+        assertTrue(c.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=8]", sender.sent.toString());
+        assertEquals("[DRIVER=8]", logOnly.sent.toString());
+    }
+
+    @Test
+    public void nothingIsSentByStateUpdatesOrApprovalChangesAlone() {
+        Recorder sender = new Recorder();
+        Recorder logOnly = new Recorder();
+        ClimateCore c = twoWay(sender, logOnly);
+        c.setApproved(true);
+        c.onSeatsReady(true);
+        c.onSeatOption(Seat.DRIVER, 6);
+        c.onSeatOption(Seat.PASSENGER, 6);
+        for (int v = 0; v < 10; v++) {
+            c.onSeatState(v % 2 == 0 ? Seat.DRIVER : Seat.PASSENGER, v);
+        }
+        c.onOutside(F70);
+        c.onDisplayUnit(1);
+        c.setSwitchTempF(50);
+        c.setApproved(true);
+        c.setApproved(false);
+        c.setApproved(true);
+        assertTrue(sender.sent.isEmpty());
+        assertTrue(logOnly.sent.isEmpty());
+    }
+
+    @Test
+    public void approvedRepeatedRequestIdSendsOnce() {
+        Recorder sender = new Recorder();
+        Recorder logOnly = new Recorder();
+        ClimateCore c = twoWay(sender, logOnly);
+        readyCore(c);
+        c.setApproved(true);
+        assertTrue(c.onTap(Seat.PASSENGER, 5));
+        assertFalse(c.onTap(Seat.PASSENGER, 5));
+        assertEquals(1, sender.sent.size());
+        assertTrue(logOnly.sent.isEmpty());
+    }
+
+    @Test
+    public void approvalChangeNotifiesTheListenerOnlyWhenItChangesTheState() {
+        final int[] calls = {0};
+        core.setListener(new Runnable() { public void run() { calls[0]++; } });
+        core.setApproved(false);
+        assertEquals(0, calls[0]);
+        core.setApproved(true);
+        assertEquals(1, calls[0]);
+        core.setApproved(true);
+        assertEquals(1, calls[0]);
+        core.setApproved(false);
+        assertEquals(2, calls[0]);
+    }
+
+    @Test
+    public void seatValueIsTheLastReportedStateOrMinusOne() {
+        assertEquals(-1, core.seatValue(Seat.DRIVER));
+        assertEquals(-1, core.seatValue(Seat.PASSENGER));
+        core.onSeatState(Seat.DRIVER, 8);
+        assertEquals(8, core.seatValue(Seat.DRIVER));
+        assertEquals(-1, core.seatValue(Seat.PASSENGER));
+        core.onSeatState(Seat.DRIVER, 9);
+        assertEquals(9, core.seatValue(Seat.DRIVER));
     }
 }

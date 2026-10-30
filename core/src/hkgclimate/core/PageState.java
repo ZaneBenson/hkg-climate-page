@@ -11,7 +11,7 @@ public final class PageState {
     /** 0 off, 1 heat, 2 cool. */
     public final int[] seatKind;
     public final boolean[] seatEnabled;
-    /** Always true in this build: taps are logged, not sent. */
+    /** True while taps are only logged (approval off); false when they are sent. */
     public final boolean testMode;
 
     public PageState(String top, String[] seatText, int[] seatLevel, int[] seatKind,

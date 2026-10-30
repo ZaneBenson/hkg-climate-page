@@ -50,7 +50,8 @@ public class ClimateService extends Service {
         }
         try {
             prefs = new Prefs(this);
-            core = new ClimateCore(new TestModeCommander(), prefs.getSwitchTempF());
+            core = new ClimateCore(new TestModeCommander(), new TestModeCommander(),
+                    prefs.getSwitchTempF());
             car = new CarLink(this, core);
             binder = new PageLinkBinder(core, new PageLinkBinder.DebugSource() {
                 @Override public Bundle debug() {
