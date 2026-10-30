@@ -6,8 +6,11 @@ switch temperature, cooling above it), the outside temperature, and preset butto
 apply several climate settings at once. A small settings app sets the switch temperature
 and builds the presets.
 
-**Status: test build 1: installable for on-car testing; seat taps are logged, not sent.**
-The owner's on-car checklist is [docs/testing/2026-10-30-test-build-1.md](docs/testing/2026-10-30-test-build-1.md).
+**Status: test build 2: seat buttons send the approved command once the owner turns approval on.**
+Built, not yet tried on the car. With approval off (the default) taps are only logged, as in
+test build 1. The owner's on-car checklist is
+[docs/testing/2026-10-30-test-build-2.md](docs/testing/2026-10-30-test-build-2.md); test build 1's is
+[docs/testing/2026-10-30-test-build-1.md](docs/testing/2026-10-30-test-build-1.md).
 
 ## Build
 
@@ -37,6 +40,6 @@ patch files are committed, so `tools/build-panel.sh` is not needed to package.
 Target car: 2023 US Hyundai Ioniq 5 (`NEEV23.USA.`, firmware 260507).
 
 - Design: [docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md](docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md)
-- Current plan: [docs/superpowers/plans/2026-10-30-test-build-1.md](docs/superpowers/plans/2026-10-30-test-build-1.md)
+- Current plan: [docs/superpowers/plans/2026-10-30-test-build-2.md](docs/superpowers/plans/2026-10-30-test-build-2.md)
 
 Licence: GPL-3.0 (see `LICENSE`). Credits: `NOTICE.md`.

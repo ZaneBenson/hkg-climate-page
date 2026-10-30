@@ -16,7 +16,8 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Plan 1 (kit, research, go/no-go) | Done. Decision: GO. |
 | Read-only collection kit (`kit/`, `tests/kit/run.sh`) | Built, 30 host checks pass, reviewed, run on the owner's car. |
 | Plan 2 (our app, panel patch, package: test build 1) | Done, installed and tested on the owner's car (2026-10-30). Seat taps are logged, not sent. |
-| Seat command | Approved by the owner on 2026-10-30 (see "Seat command approval"). Not yet sent by any build. |
+| Seat command | Approved by the owner on 2026-10-30 (see "Seat command approval"). Sent only by test build 2, once the owner turns approval on. |
+| Plan 3 (test build 2: approved seat command behind an approval switch) | Built (`0.2.0-test2`), not yet on the car. Checklist: `docs/testing/2026-10-30-test-build-2.md`. |
 | Branches | Everything merged into `main` (2026-10-30). |
 
 ## Seat command approval (2026-10-30)
