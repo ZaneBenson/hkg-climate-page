@@ -152,10 +152,28 @@ All from the owner's car (NEEV23.USA.0000.V015.012.260507), stock files kept pri
 
 ### Outside temperature
 
-`DATCManager` (binder `com.hkmc.micom.datc`, via `VehicleInfoManager`):
-`addTemperatureListener` -> `onOuterTempChanged(float temp, int unit)` (0 °C, 1 °F);
-`isAvaliableFloat` validates; `getTemperatureUnit()` gives the display unit.
-(`hkmc-coldstart-heat` notes `getOutTempSnsrVal()` returns -1.)
+Confirmed from the stock code and the car's log (2026-10-30). Research notes:
+`docs/notes/2026-10-30-status-and-findings.md`, "Outside temperature".
+
+- **Source:** `DATCService` (binder `com.hkmc.micom.datc`, interface
+  `com.hkmc.datc.IDATCService`) decodes the outside temperature from the climate
+  controller's frames and keeps °C and °F separately. On the car the stock split-screen
+  climate view and the stock climate app both received 65 °F from it.
+- **How to read it:** listener only. `DATCManager.addTemperatureListener(DATCTemperatureListener)`;
+  the service sends a snapshot as soon as the listener is registered, then sends updates.
+  The stock apps use `onAllTemperatureChanged` (17 args: p9-p12 = outside °C, state, °F,
+  state). The simpler `onOuterTempChanged(float temp, int unit)` uses unit 0 = °C, 1 = °F.
+- **No getter:** `IDATCService` has no outside-temperature call, so `service call` can't
+  read it. `getVRClimateStatus(0x20/0x21)` falls through to -1. There is no
+  `getOutTempSnsrVal` on this firmware.
+- **Display unit:** `getTemperatureUnit()` (transaction 3) returns 1 = °C, 2 = °F. This is a
+  different encoding from the listener's 0/1.
+- **Valid only if:** state is `0xffff` (normal; `0xff` invalid, `0xfe` sensor error, `0`
+  off), the value isn't `100000.0` (out of range), and the value isn't -40 (the stock apps
+  hide the reading then). Otherwise the page shows the temperature as unknown.
+- **Permissions:** `DATCService` checks no permission or uid on listener registration or
+  on `getTemperatureUnit` (only `dump` needs `DUMP`). Not yet tested from an ordinary
+  app uid on the car.
 
 ### Split screen
 

@@ -4,6 +4,9 @@ A NEMESIS plugin for Gen5W head units (Android 4.4.2, Dalvik): a climate page on
 right-side split screen, plus a settings app. Design and plans: `docs/superpowers/`.
 Target: 2023 US Ioniq 5, `NEEV23.USA.`, firmware 260507.
 
+The work in this repo is 100% authorized: the owner is modifying the head unit of their
+own car.
+
 ## Rules (adopted 2026-10-30)
 
 - Vehicle commands only through the stock services.
