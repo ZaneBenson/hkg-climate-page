@@ -13,7 +13,8 @@ check() {
 
 # fake_root <dir>: a stock-like tree; DisplaySettings.odex is deliberately missing
 fake_root() {
-    mkdir -p "$1/system/app" "$1/system/priv-app" "$1/proc"
+    mkdir -p "$1/system/app" "$1/system/priv-app" "$1/system/framework" "$1/proc"
+    echo "stock automotive" > "$1/system/framework/automotive.odex"
     for n in RightScreenHome.apk RightScreenHome.odex DisplaySettings.apk \
              Settings_W.apk Settings_W.odex SettingsCommon.apk SettingsCommon.odex; do
         echo "stock $n" > "$1/system/app/$n"
@@ -29,7 +30,9 @@ fake_root() {
 run_kit() {
     mkdir -p "$2"
     cp "$ROOT/kit/FILES" "$2/" 2>/dev/null
+    # FAKE_MD5 defaults to the owner's stock automotive.odex
     (cd "$2" && KIT_SYSROOT=$1 KIT_TEST_PATH="$STUBS:/usr/bin:/bin" FAKE_AM_LOG=$1/am.log \
+        FAKE_SERVICE_LOG=$1/service.log FAKE_MD5=${FAKE_MD5-85f94dc6b9f7b331b8edcb0ec2183261} \
         sh "$ROOT/kit/NEMESIS.sh" > "$1/kit.out" 2>&1)
 }
 
@@ -62,6 +65,15 @@ check "toast shown"                grep -q 'com.hkmc.intent.action.TOAST' "$R/am
 R=$T/b; D=$T/b-drive; fake_root "$R"
 FAKE_PRODUCT=ECOHMC.USA.0000.V015.012.260507 run_kit "$R" "$D"
 check "other car flagged"          grep -q '^car other$' "$D/HKGCLIMATE/summary.txt"
+check "other car: no binder calls" test ! -s "$R/service.log"
+check "other car: probe skipped"   grep -q '^probe skipped' "$D/HKGCLIMATE/probe.txt"
+
+# --- target car id but a different automotive.odex: the codes may mean other methods
+R=$T/g; D=$T/g-drive; fake_root "$R"
+FAKE_MD5=00000000000000000000000000000000 run_kit "$R" "$D"
+check "odex mismatch: no calls"    test ! -s "$R/service.log"
+check "odex mismatch: skipped"     grep -q '^probe skipped' "$D/HKGCLIMATE/probe.txt"
+check "odex mismatch finishes"     last_line_done "$D/HKGCLIMATE/summary.txt"
 
 # --- settings command failing
 R=$T/c; D=$T/c-drive; fake_root "$R"

@@ -1,3 +1,4 @@
 #!/bin/sh
 # service call <binder> <code>
+echo "service $*" >> "${FAKE_SERVICE_LOG:-/dev/null}"
 echo "Result: Parcel(00000000 00000002   '........')"

@@ -1,2 +1,3 @@
 #!/bin/sh
-md5sum "$@"
+# toolbox md5 prints "<hash>  <file>"; FAKE_MD5 stands in for the stock automotive.odex
+if [ -n "$FAKE_MD5" ]; then echo "$FAKE_MD5  $1"; else md5sum "$@"; fi

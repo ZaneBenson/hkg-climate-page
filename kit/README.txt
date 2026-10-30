@@ -12,6 +12,8 @@ hkg-climate kit (read-only) - collects what the hkg-climate-page research needs
    files and the Android log: keep it private and never post it. Send it only
    to the person who asked for it.
 
-Nothing on the car is changed and no vehicle commands are sent. Accounts,
-paired phone data, Wi-Fi passwords, the vehicle security partition, VIN and
-serial numbers are never collected.
+Nothing on the car is changed and no vehicle commands are sent. No files are
+copied from accounts, paired phone data, Wi-Fi settings, the vehicle security
+partition or /data. The Android log is copied as-is, though, and can hold phone
+and contact names, Bluetooth addresses and other ids the car logs: another
+reason to keep the folder private.
