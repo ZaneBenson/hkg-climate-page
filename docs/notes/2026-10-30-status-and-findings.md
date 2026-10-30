@@ -15,8 +15,8 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Design | Approved by the owner. Version 1 page layout "B" chosen. |
 | Plan 1 (kit, research, go/no-go) | Done. Decision: GO. |
 | Read-only collection kit (`kit/`, `tests/kit/run.sh`) | Built, 30 host checks pass, reviewed, run on the owner's car. |
-| Plan 2 (our app, panel patch, package) | Not written. No plan-2 code exists. |
-| Branches | `main`: first commit (rules, design, plan). `feasibility`: kit, review fixes, research report, notes. Not merged. |
+| Plan 2 (our app, panel patch, package: test build 1) | Done and built (`dist/hkg-climate-page.zip`). Full host test chain passes and the build is reproducible. Seat taps are logged, not sent. Not yet run on the car: checklist in `docs/testing/2026-10-30-test-build-1.md`. |
+| Branches | `main`: first commit (rules, design, plan). `feasibility`: kit, review fixes, research report, notes. `test-build-1`: plan 2 (app, panel patch, package, checklist). None merged. |
 
 ## Design summary
 
