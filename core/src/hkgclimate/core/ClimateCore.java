@@ -2,8 +2,7 @@ package hkgclimate.core;
 
 /**
  * What the climate page knows and what a tap does. Single-threaded: call everything from the
- * main looper. Feeding it state, or changing the approval, never sends a command; only onTap
- * does, once per request id: to the sender when approved, otherwise to the log-only commander.
+ * main looper. Feeding it state never sends a command; only onTap does, once per request id.
  */
 public final class ClimateCore {
     private static final int SEATS = Seat.values().length;
@@ -12,22 +11,19 @@ public final class ClimateCore {
     private static final int NO_VALUE = -1;
 
     private final SeatCommander sender;
-    private final SeatCommander logOnly;
     private final TapGate gate = new TapGate();
     private final int[] seatValue = new int[SEATS];
     private final int[] seatOption = new int[SEATS];
 
     private int switchTempF;
     private boolean ready;
-    private boolean approved;
     private OutsideTemp outside = OutsideTemp.UNKNOWN;
     private int displayUnit = UNIT_FAHRENHEIT;
     private Runnable listener;
     private PageState last;
 
-    public ClimateCore(SeatCommander sender, SeatCommander logOnly, int switchTempF) {
+    public ClimateCore(SeatCommander sender, int switchTempF) {
         this.sender = sender;
-        this.logOnly = logOnly;
         this.switchTempF = switchTempF;
         for (int i = 0; i < SEATS; i++) seatValue[i] = NO_VALUE;
         last = build();
@@ -48,9 +44,6 @@ public final class ClimateCore {
 
     public void setSwitchTempF(int f) { switchTempF = f; changed(); }
 
-    /** Off by default. While on, taps go to the sender; while off, to the log-only commander. */
-    public void setApproved(boolean approved) { this.approved = approved; changed(); }
-
     /** The last value reported for the seat, as is (even if unknown); -1 before any. */
     public int seatValue(Seat s) { return seatValue[s.ordinal()]; }
 
@@ -67,7 +60,7 @@ public final class ClimateCore {
         int i = s.ordinal();
         int next = SeatStepper.next(seatValue[i], currentMode(s));
         if (next == -1) return false;
-        (approved ? sender : logOnly).set(s, next);
+        sender.set(s, next);
         return true;
     }
 
@@ -93,6 +86,7 @@ public final class ClimateCore {
         String[] text = new String[SEATS];
         int[] level = new int[SEATS];
         int[] kind = new int[SEATS];
+        int[] tapKind = new int[SEATS];
         boolean[] enabled = new boolean[SEATS];
         for (Seat s : Seat.values()) {
             int i = s.ordinal();
@@ -106,11 +100,13 @@ public final class ClimateCore {
             level[i] = SeatValues.level(seatValue[i]);
             Mode m = SeatValues.modeOf(seatValue[i]);
             kind[i] = m == Mode.HEAT ? 1 : m == Mode.COOL ? 2 : 0;
+            // what the next tap does: an on seat steps within its mode, an off seat turns on as onTap would
+            Mode next = m != null ? m : currentMode(s);
+            tapKind[i] = next == Mode.COOL ? 2 : 1;
             enabled[i] = true;
         }
         String temp = outside.display(displayUnit);
-        String tap = currentMode(Seat.DRIVER) == Mode.COOL ? "taps will cool" : "taps will heat";
-        String top = (temp == null ? "Outside temperature unknown" : "Outside " + temp) + DOT + tap;
-        return new PageState(top, text, level, kind, enabled, !approved);
+        String top = temp == null ? "Outside temperature unknown" : "Outside " + temp;
+        return new PageState(top, text, level, kind, tapKind, enabled);
     }
 }

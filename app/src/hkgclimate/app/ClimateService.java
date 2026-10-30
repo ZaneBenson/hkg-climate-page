@@ -20,9 +20,8 @@ import hkgclimate.core.SendWatch;
 /**
  * The climate service the page binds to. It owns the core, reads the car through CarLink and
  * serves the page state through PageLinkBinder. A tap goes to the CheckedSeatSender (the stock
- * seat service, through UsmSeatCalls) only while the owner's approval preference is on; otherwise
- * to TestModeCommander, which only logs. Nothing here sends on its own: no send at start, on an
- * approval change or as a retry. A send the car does not follow is reported (SendWatch), not resent.
+ * seat service, through UsmSeatCalls). Nothing here sends on its own: no send at start, on a
+ * settings change or as a retry. A send the car does not follow is reported (SendWatch), not resent.
  */
 public class ClimateService extends Service {
     private static final String TAG = CarLink.TAG;
@@ -48,10 +47,6 @@ public class ClimateService extends Service {
                 public void onSharedPreferenceChanged(SharedPreferences sp, String key) {
                     if (core != null && (key == null || Prefs.KEY_SWITCH_TEMP_F.equals(key))) {
                         core.setSwitchTempF(prefs.getSwitchTempF());
-                    }
-                    // only picks the commander for later taps; never sends
-                    if (core != null && (key == null || Prefs.KEY_SEAT_APPROVED.equals(key))) {
-                        core.setApproved(prefs.isSeatApproved());
                     }
                     if (keeper != null && (key == null || Prefs.KEY_PAGE_ENABLED.equals(key))) {
                         try {
@@ -88,8 +83,7 @@ public class ClimateService extends Service {
                     afterSend();
                 }
             };
-            core = new ClimateCore(send, new TestModeCommander(), prefs.getSwitchTempF());
-            core.setApproved(prefs.isSeatApproved());
+            core = new ClimateCore(send, prefs.getSwitchTempF());
             car = new CarLink(this, core, watch);
             binder = new PageLinkBinder(core, new PageLinkBinder.DebugSource() {
                 @Override public Bundle debug() {

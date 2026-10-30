@@ -21,7 +21,7 @@ public class ClimateCoreTest {
     }
 
     private final Recorder rec = new Recorder();
-    private final ClimateCore core = new ClimateCore(rec, rec, 60);
+    private final ClimateCore core = new ClimateCore(rec, 60);
 
     private void ready(int driver, int passenger, OutsideTemp outside) {
         core.onSeatsReady(true);
@@ -60,7 +60,7 @@ public class ClimateCoreTest {
         int[] bad = {0, 9, -1};
         for (int v : bad) {
             Recorder r = new Recorder();
-            ClimateCore c = new ClimateCore(r, r, 60);
+            ClimateCore c = new ClimateCore(r, 60);
             c.onSeatsReady(true);
             c.onSeatOption(Seat.DRIVER, 6);
             c.onSeatState(Seat.DRIVER, v);
@@ -116,7 +116,7 @@ public class ClimateCoreTest {
     public void everyTapComputesFromTheCurrentState() {
         ready(2, 2, F48);
         assertTrue(core.onTap(Seat.DRIVER, 1));
-        // test mode: the car did not change, state stays 2
+        // the car did not change yet, state stays 2
         assertTrue(core.onTap(Seat.DRIVER, 2));
         assertEquals("[DRIVER=8, DRIVER=8]", rec.sent.toString());
         core.onSeatState(Seat.DRIVER, 8);
@@ -152,32 +152,113 @@ public class ClimateCoreTest {
 
     @Test
     public void topLineTexts() {
-        ClimateCore c = new ClimateCore(rec, rec, 60);
+        ClimateCore c = new ClimateCore(rec, 60);
         // nothing received yet
-        assertEquals("Outside temperature unknown · taps will heat", c.pageState().top);
+        assertEquals("Outside temperature unknown", c.pageState().top);
 
         ready(2, 2, F65);
-        assertEquals("Outside 65 °F · taps will cool", core.pageState().top);
+        assertEquals("Outside 65 \u00b0F", core.pageState().top);
         core.onOutside(F48);
-        assertEquals("Outside 48 °F · taps will heat", core.pageState().top);
+        assertEquals("Outside 48 \u00b0F", core.pageState().top);
         core.onOutside(OutsideTemp.of(0f, 0, 0f, 0));
-        assertEquals("Outside temperature unknown · taps will heat", core.pageState().top);
+        assertEquals("Outside temperature unknown", core.pageState().top);
     }
 
     @Test
     public void topLineFollowsDisplayUnit() {
         ready(2, 2, F65);
         core.onDisplayUnit(1);
-        assertEquals("Outside 18 °C · taps will cool", core.pageState().top);
+        assertEquals("Outside 18 \u00b0C", core.pageState().top);
         core.onDisplayUnit(7);
-        assertEquals("Outside 65 °F · taps will cool", core.pageState().top);
+        assertEquals("Outside 65 \u00b0F", core.pageState().top);
+        core.onDisplayUnit(1);
+        core.onOutside(OutsideTemp.of(0f, 0xff, 65f, 0xffff));
+        assertEquals("Outside temperature unknown", core.pageState().top);
+    }
+
+    private int tapKind(Seat s) { return core.pageState().seatTapKind[s.ordinal()]; }
+
+    @Test
+    public void passengerOffWithColdOutsideTemperatureTapKindCools() {
+        // Review Focus 1: the passenger at 5 is on (cool), whatever the outside says
+        ready(2, 5, F48);
+        assertEquals(2, tapKind(Seat.PASSENGER));
+        assertEquals(1, tapKind(Seat.DRIVER));
     }
 
     @Test
-    public void topLineUsesTheDriversOption() {
+    public void offSeatWithUnknownOutsideTapKindHeats() {
+        // Review Focus 2
+        ready(2, 2, OutsideTemp.UNKNOWN);
+        assertEquals(1, tapKind(Seat.DRIVER));
+        assertEquals(1, tapKind(Seat.PASSENGER));
+    }
+
+    @Test
+    public void offSeatTapKindFollowsTheOutsideTemperatureAndOption() {
         ready(2, 2, F70);
-        core.onSeatOption(Seat.DRIVER, 1);
-        assertEquals("Outside 70 °F · taps will heat", core.pageState().top);
+        assertEquals(2, tapKind(Seat.DRIVER));
+        assertEquals(2, tapKind(Seat.PASSENGER));
+        core.onOutside(F48);
+        assertEquals(1, tapKind(Seat.DRIVER));
+        assertEquals(1, tapKind(Seat.PASSENGER));
+        core.onOutside(F70);
+        core.onSeatOption(Seat.DRIVER, 0);
+        assertEquals(1, tapKind(Seat.DRIVER));
+        assertEquals(2, tapKind(Seat.PASSENGER));
+    }
+
+    @Test
+    public void notReadyOrUnknownValueTapKindIsZero() {
+        // Review Focus 3
+        ready(2, 2, F48);
+        core.onSeatsReady(false);
+        assertEquals("[0, 0]", java.util.Arrays.toString(core.pageState().seatTapKind));
+        core.onSeatsReady(true);
+        core.onSeatState(Seat.DRIVER, 9);
+        PageState s = core.pageState();
+        assertEquals(0, s.seatTapKind[D]);
+        assertFalse(s.seatEnabled[D]);
+        assertEquals(1, s.seatTapKind[P]);
+        core.onSeatState(Seat.DRIVER, -1);
+        assertEquals(0, tapKind(Seat.DRIVER));
+    }
+
+    @Test
+    public void tapKindAgreesWithTheModeOfTheNextTap() {
+        OutsideTemp[] temps = {F48, F70};
+        for (Seat seat : Seat.values()) {
+            for (OutsideTemp t : temps) {
+                for (int v = 2; v <= 8; v++) {
+                    Recorder r = new Recorder();
+                    ClimateCore c = new ClimateCore(r, 60);
+                    c.onSeatsReady(true);
+                    c.onSeatOption(Seat.DRIVER, 6);
+                    c.onSeatOption(Seat.PASSENGER, 6);
+                    c.onSeatState(Seat.DRIVER, v);
+                    c.onSeatState(Seat.PASSENGER, v);
+                    c.onOutside(t);
+                    int kind = c.pageState().seatTapKind[seat.ordinal()];
+                    assertTrue(c.onTap(seat, 1));
+                    String sent = r.sent.get(0);
+                    int value = Integer.parseInt(sent.substring(sent.indexOf('=') + 1));
+                    // a seat stepping down to off keeps the mode it is in
+                    Mode m = SeatValues.modeOf(value == SeatValues.OFF ? v : value);
+                    int sentKind = m == Mode.HEAT ? 1 : m == Mode.COOL ? 2 : 0;
+                    String why = seat + " v" + v + " " + sent;
+                    assertEquals(why, kind, sentKind);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void aTapCallsTheSenderOnceAndStateUpdatesNever() {
+        ready(2, 2, F48);
+        assertTrue(rec.sent.isEmpty());
+        assertTrue(core.onTap(Seat.DRIVER, 4));
+        assertFalse(core.onTap(Seat.DRIVER, 4));
+        assertEquals(1, rec.sent.size());
     }
 
     @Test
@@ -192,7 +273,6 @@ public class ClimateCoreTest {
         assertEquals(0, s.seatLevel[P]);
         assertEquals(0, s.seatKind[P]);
         assertTrue(s.seatEnabled[P]);
-        assertTrue(s.testMode);
 
         core.onSeatState(Seat.PASSENGER, 4);
         s = core.pageState();
@@ -219,16 +299,18 @@ public class ClimateCoreTest {
         assertEquals(3, calls[0]);
         core.onOutside(F65);
         assertEquals(3, calls[0]);
-        core.onSeatOption(Seat.PASSENGER, 3); // top line follows the driver's option only
+        core.onSeatOption(Seat.PASSENGER, 3); // the passenger has no known value: no visible change
         assertEquals(3, calls[0]);
         core.onDisplayUnit(2);          // already the default
         assertEquals(3, calls[0]);
         core.setSwitchTempF(61);        // 65 still above: no change
         assertEquals(3, calls[0]);
-        core.onSeatOption(Seat.DRIVER, 6);
-        assertEquals(4, calls[0]);      // taps will cool now
-        core.onTap(Seat.DRIVER, 1);     // a tap changes nothing in test mode
-        assertEquals(4, calls[0]);
+        core.onSeatState(Seat.PASSENGER, 2);
+        assertEquals(4, calls[0]);      // the passenger seat shows now (off, heat-only option)
+        core.onSeatOption(Seat.PASSENGER, 6);
+        assertEquals(5, calls[0]);      // its next tap will cool now
+        core.onTap(Seat.DRIVER, 1);     // a tap alone changes nothing shown
+        assertEquals(5, calls[0]);
     }
 
     @Test
@@ -246,116 +328,14 @@ public class ClimateCoreTest {
     public void celsiusUnitWithInvalidCelsiusReadingMeansUnknownAndHeat() {
         ready(2, 2, OutsideTemp.of(0f, 0xff, 75f, 0xffff));
         core.onDisplayUnit(1);
-        assertEquals("Outside temperature unknown \u00b7 taps will heat", core.pageState().top);
+        assertEquals("Outside temperature unknown", core.pageState().top);
         assertTrue(core.onTap(Seat.DRIVER, 1));
         assertEquals("DRIVER=8", rec.sent.get(0));
         // in Fahrenheit the same reading is usable and warm
         core.onDisplayUnit(2);
-        assertEquals("Outside 75 \u00b0F \u00b7 taps will cool", core.pageState().top);
+        assertEquals("Outside 75 \u00b0F", core.pageState().top);
         assertTrue(core.onTap(Seat.DRIVER, 2));
         assertEquals("DRIVER=5", rec.sent.get(1));
-    }
-
-    private static ClimateCore twoWay(Recorder sender, Recorder logOnly) {
-        return new ClimateCore(sender, logOnly, 60);
-    }
-
-    private static void readyCore(ClimateCore c) {
-        c.onSeatsReady(true);
-        c.onSeatOption(Seat.DRIVER, 6);
-        c.onSeatOption(Seat.PASSENGER, 6);
-        c.onSeatState(Seat.DRIVER, 2);
-        c.onSeatState(Seat.PASSENGER, 2);
-        c.onOutside(F48);
-    }
-
-    @Test
-    public void notApprovedByDefaultTapReachesOnlyTheLogOnlyCommander() {
-        Recorder sender = new Recorder();
-        Recorder logOnly = new Recorder();
-        ClimateCore c = twoWay(sender, logOnly);
-        readyCore(c);
-        assertTrue(c.pageState().testMode);
-        assertTrue(c.onTap(Seat.DRIVER, 1));
-        assertTrue(sender.sent.isEmpty());
-        assertEquals("[DRIVER=8]", logOnly.sent.toString());
-    }
-
-    @Test
-    public void approvedTapReachesOnlyTheSenderWithTheSameValue() {
-        Recorder sender = new Recorder();
-        Recorder logOnly = new Recorder();
-        ClimateCore c = twoWay(sender, logOnly);
-        readyCore(c);
-        c.setApproved(true);
-        assertFalse(c.pageState().testMode);
-        assertTrue(c.onTap(Seat.DRIVER, 1));
-        assertEquals("[DRIVER=8]", sender.sent.toString());
-        assertTrue(logOnly.sent.isEmpty());
-    }
-
-    @Test
-    public void approvalTurnedOffSendsTheNextTapToLogOnly() {
-        Recorder sender = new Recorder();
-        Recorder logOnly = new Recorder();
-        ClimateCore c = twoWay(sender, logOnly);
-        readyCore(c);
-        c.setApproved(true);
-        assertTrue(c.onTap(Seat.DRIVER, 1));
-        c.setApproved(false);
-        assertTrue(c.pageState().testMode);
-        assertTrue(c.onTap(Seat.DRIVER, 2));
-        assertEquals("[DRIVER=8]", sender.sent.toString());
-        assertEquals("[DRIVER=8]", logOnly.sent.toString());
-    }
-
-    @Test
-    public void nothingIsSentByStateUpdatesOrApprovalChangesAlone() {
-        Recorder sender = new Recorder();
-        Recorder logOnly = new Recorder();
-        ClimateCore c = twoWay(sender, logOnly);
-        c.setApproved(true);
-        c.onSeatsReady(true);
-        c.onSeatOption(Seat.DRIVER, 6);
-        c.onSeatOption(Seat.PASSENGER, 6);
-        for (int v = 0; v < 10; v++) {
-            c.onSeatState(v % 2 == 0 ? Seat.DRIVER : Seat.PASSENGER, v);
-        }
-        c.onOutside(F70);
-        c.onDisplayUnit(1);
-        c.setSwitchTempF(50);
-        c.setApproved(true);
-        c.setApproved(false);
-        c.setApproved(true);
-        assertTrue(sender.sent.isEmpty());
-        assertTrue(logOnly.sent.isEmpty());
-    }
-
-    @Test
-    public void approvedRepeatedRequestIdSendsOnce() {
-        Recorder sender = new Recorder();
-        Recorder logOnly = new Recorder();
-        ClimateCore c = twoWay(sender, logOnly);
-        readyCore(c);
-        c.setApproved(true);
-        assertTrue(c.onTap(Seat.PASSENGER, 5));
-        assertFalse(c.onTap(Seat.PASSENGER, 5));
-        assertEquals(1, sender.sent.size());
-        assertTrue(logOnly.sent.isEmpty());
-    }
-
-    @Test
-    public void approvalChangeNotifiesTheListenerOnlyWhenItChangesTheState() {
-        final int[] calls = {0};
-        core.setListener(new Runnable() { public void run() { calls[0]++; } });
-        core.setApproved(false);
-        assertEquals(0, calls[0]);
-        core.setApproved(true);
-        assertEquals(1, calls[0]);
-        core.setApproved(true);
-        assertEquals(1, calls[0]);
-        core.setApproved(false);
-        assertEquals(2, calls[0]);
     }
 
     @Test

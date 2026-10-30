@@ -40,7 +40,9 @@ public final class PageLink {
     public static final String K_SEAT_KIND = "seatKind";
     /** boolean[], index 0 driver: whether tapping the seat is allowed. */
     public static final String K_SEAT_ENABLED = "seatEnabled";
-    /** boolean: this is a test build (taps are logged, not sent). */
+    /** int[], index 0 driver: what the seat's next tap does (1 heats, 2 cools, 0 unavailable). */
+    public static final String K_SEAT_TAP_KIND = "seatTapKind";
+    /** boolean: always false now; kept until the page stops reading it. */
     public static final String K_TEST_MODE = "testMode";
     /** Bundle of raw values; read by the settings screen only. */
     public static final String K_DEBUG = "debug";

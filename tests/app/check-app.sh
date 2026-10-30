@@ -297,8 +297,6 @@ check "the seat setters are called only from CheckedSeatSender.send" \
     seat_calls_only_in "$TMP/dexcode.txt" 'hkgclimate.core.CheckedSeatSender.send:'
 check "ClimateService builds the CheckedSeatSender" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/CheckedSeatSender;\.<init>'
-check "ClimateService builds the TestModeCommander" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/app/TestModeCommander;\.<init>'
 check "ClimateService builds the UsmSeatCalls" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/app/UsmSeatCalls;\.<init>'
 
