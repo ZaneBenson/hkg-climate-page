@@ -25,7 +25,8 @@ public final class OutsideTemp {
     }
 
     private static boolean good(float value, int state) {
-        return state == GOOD_STATE && value != NO_VALUE && value != SENSOR_FAULT;
+        return state == GOOD_STATE && !Float.isNaN(value) && !Float.isInfinite(value)
+                && value != NO_VALUE && value != SENSOR_FAULT;
     }
 
     /** True when the Fahrenheit reading is usable (the heat/cool choice compares in Fahrenheit). */

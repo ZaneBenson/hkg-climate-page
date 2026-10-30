@@ -75,4 +75,17 @@ public class OutsideTempTest {
         assertNull(t.display(2));
         assertNull(t.display(1));
     }
+
+    @Test
+    public void nanAndInfiniteValuesAreInvalidInBothPairs() {
+        float[] bad = {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY};
+        for (float v : bad) {
+            assertFalse(OutsideTemp.of(18f, 0xffff, v, 0xffff).valid());
+            assertNull(OutsideTemp.of(18f, 0xffff, v, 0xffff).display(2));
+            assertNull(OutsideTemp.of(18f, 0xffff, v, 0xffff).display(1));
+            assertTrue(OutsideTemp.of(v, 0xffff, 65f, 0xffff).valid());
+            assertNull(OutsideTemp.of(v, 0xffff, 65f, 0xffff).display(1));
+            assertEquals("65 \u00b0F", OutsideTemp.of(v, 0xffff, 65f, 0xffff).display(2));
+        }
+    }
 }

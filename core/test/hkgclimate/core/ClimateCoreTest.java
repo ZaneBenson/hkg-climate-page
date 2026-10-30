@@ -241,4 +241,18 @@ public class ClimateCoreTest {
         core.onSeatState(Seat.DRIVER, 6);
         assertFalse(a.equals(core.pageState()));
     }
+
+    @Test
+    public void celsiusUnitWithInvalidCelsiusReadingMeansUnknownAndHeat() {
+        ready(2, 2, OutsideTemp.of(0f, 0xff, 75f, 0xffff));
+        core.onDisplayUnit(1);
+        assertEquals("Outside temperature unknown \u00b7 taps will heat", core.pageState().top);
+        assertTrue(core.onTap(Seat.DRIVER, 1));
+        assertEquals("DRIVER=8", rec.sent.get(0));
+        // in Fahrenheit the same reading is usable and warm
+        core.onDisplayUnit(2);
+        assertEquals("Outside 75 \u00b0F \u00b7 taps will cool", core.pageState().top);
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("DRIVER=5", rec.sent.get(1));
+    }
 }

@@ -64,7 +64,12 @@ public final class ClimateCore {
     public PageState pageState() { return build(); }
 
     private Mode currentMode(Seat s) {
-        return SeatStepper.chooseMode(outside, switchTempF, seatOption[s.ordinal()]);
+        return SeatStepper.chooseMode(usableOutside(), switchTempF, seatOption[s.ordinal()]);
+    }
+
+    /** The reading, only when the page can show it in the display unit; otherwise unknown (heat). */
+    private OutsideTemp usableOutside() {
+        return outside.display(displayUnit) == null ? OutsideTemp.UNKNOWN : outside;
     }
 
     private void changed() {
