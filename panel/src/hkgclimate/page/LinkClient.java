@@ -44,16 +44,31 @@ final class LinkClient {
     private boolean bound;
     private IBinder service;
     private long nextTapId = new Random().nextLong();
+    // our app's uid, looked up on the main thread before subscribing; -1 if unknown (then every
+    // callback is refused). Read on binder threads.
+    private volatile int appUid = -1;
+    private volatile boolean refusalLogged;
 
     private final Binder callback = new Binder() {
         @Override
         protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
             try {
                 if (code != PageLink.CB_STATE) return super.onTransact(code, data, reply, flags);
+                // only our own app may push state to the page
+                int caller = Binder.getCallingUid();
+                if (caller != appUid) {
+                    if (!refusalLogged) {
+                        refusalLogged = true;
+                        Log.w(TAG, "state callback refused from uid " + caller);
+                    }
+                    return false;
+                }
                 data.enforceInterface(PageLink.CALLBACK_DESCRIPTOR);
                 // binder thread: take our own copy of the Bundle, then render on the main thread
                 Bundle read = data.readBundle();
                 final Bundle state = read == null ? new Bundle() : new Bundle(read);
+                // size() unparcels the copy here, on the binder thread, so the main thread never
+                // reads from a Parcel that has been recycled
                 state.size();
                 main.post(new Runnable() {
                     @Override public void run() { deliver(state); }
@@ -204,9 +219,20 @@ final class LinkClient {
 
     private void connected(IBinder binder) {
         if (!started || !bound) return;
+        appUid = lookUpAppUid();
         service = binder;
         if (!send(binder, PageLink.TX_SUBSCRIBE)) {
             service = null;
+        }
+    }
+
+    /** The uid of our app's package, or -1 (logged) if it can't be found. */
+    private int lookUpAppUid() {
+        try {
+            return context.getPackageManager().getApplicationInfo(PageLink.PACKAGE, 0).uid;
+        } catch (Throwable t) {
+            Log.e(TAG, "looking up the uid of " + PageLink.PACKAGE + " failed", t);
+            return -1;
         }
     }
 

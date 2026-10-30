@@ -86,7 +86,6 @@ final class PageView extends FrameLayout {
         textSize(top, 22);
         top.setMaxLines(2);
         top.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        top.setText(WAITING);
         topRow.addView(top, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         settings = new TextView(context);
         textSize(settings, 16);
