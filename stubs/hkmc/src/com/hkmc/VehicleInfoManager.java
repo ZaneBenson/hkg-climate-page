@@ -9,6 +9,8 @@ public class VehicleInfoManager {
     // a method call, so javac emits a field read instead of inlining a placeholder string
     public static final String DATC_SERVICE = stub();
 
+    private VehicleInfoManager() { }
+
     private static String stub() { throw new RuntimeException("stub"); }
 
     public static VehicleInfoManager getInstance(Context context) { throw new RuntimeException("stub"); }

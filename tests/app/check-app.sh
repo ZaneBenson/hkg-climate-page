@@ -23,9 +23,36 @@ if [ -s "$APK" ]; then
     "$BUILD_TOOLS/aapt" dump badging "$APK" > "$TMP/badging" 2>&1
     unzip -p "$APK" classes.dex > "$TMP/classes.dex" 2> /dev/null
     "$BUILD_TOOLS/dexdump" "$TMP/classes.dex" > "$TMP/dex.txt" 2>&1
+    # -d lists the code, which is where references to other classes show up
+    "$BUILD_TOOLS/dexdump" -d "$TMP/classes.dex" > "$TMP/dexcode.txt" 2>&1
     unzip -Z1 "$APK" > "$TMP/entries" 2>&1
 fi
-: >> "$TMP/badging"; : >> "$TMP/dex.txt"; : >> "$TMP/entries"
+: >> "$TMP/badging"; : >> "$TMP/dex.txt"; : >> "$TMP/dexcode.txt"; : >> "$TMP/entries"
+
+# has_ref <dexdump -d output> <class>: the code refers to the class, e.g. Lcom/hkmc/usm/
+has_ref() { grep -q "$2" "$1"; }
+
+# self-test of has_ref: a throwaway dex whose code calls a scratch com.hkmc.usm class must be a
+# hit. The scratch sources live only in $TMP; they are never in the repo or the APK.
+mkdir -p "$TMP/st/s/com/hkmc/usm" "$TMP/st/so" "$TMP/st/o"
+cat > "$TMP/st/s/com/hkmc/usm/Seat.java" <<'JAVA'
+package com.hkmc.usm;
+public class Seat { public void send(int v) { } }
+JAVA
+cat > "$TMP/st/Caller.java" <<'JAVA'
+public class Caller { void go() { new com.hkmc.usm.Seat().send(3); } }
+JAVA
+if javac --release 8 -cp "$ANDROID_JAR" -d "$TMP/st/so" "$TMP/st/s/com/hkmc/usm/Seat.java" > /dev/null 2>&1 \
+    && javac -source 8 -target 8 -Xlint:-options -bootclasspath "$ANDROID_JAR" -cp "$TMP/st/so" \
+        -d "$TMP/st/o" "$TMP/st/Caller.java" > /dev/null 2>&1 \
+    && "$BUILD_TOOLS/d8" --min-api 19 --lib "$ANDROID_JAR" --classpath "$TMP/st/so" --output "$TMP/st" \
+        "$TMP/st/o/Caller.class" > /dev/null 2>&1 \
+    && "$BUILD_TOOLS/dexdump" -d "$TMP/st/classes.dex" > "$TMP/st/code.txt" 2>&1; then
+    :
+else
+    : > "$TMP/st/code.txt"
+fi
+check "self-test: the reference check finds a scratch com.hkmc.usm call" has_ref "$TMP/st/code.txt" 'Lcom/hkmc/usm/'
 
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
 check "versionName is 0.1.0-test1" grep -q "versionName='0.1.0-test1'" "$TMP/badging"
@@ -41,7 +68,8 @@ check "dex has PageLink" grep -q "Lhkgclimate/link/PageLink;" "$TMP/dex.txt"
 check "dex has core classes" grep -q "Lhkgclimate/core/ClimateCore;" "$TMP/dex.txt"
 check "dex lists classes" grep -q "Class descriptor" "$TMP/dex.txt"
 check "dex has no class under Lcom/hkmc/" sh -c "! grep -q \"Class descriptor *: *'Lcom/hkmc/\" $TMP/dex.txt"
-check "dex has no reference to Lcom/hkmc/usm/" sh -c "! grep -q 'Lcom/hkmc/usm/' $TMP/dex.txt"
+check "dex code listing contains our code" grep -q 'hkgclimate.app.SettingsActivity.onCreate' "$TMP/dexcode.txt"
+check "dex has no reference to Lcom/hkmc/usm/" sh -c "! grep -q 'Lcom/hkmc/usm/' $TMP/dexcode.txt"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
 echo "all checks passed"

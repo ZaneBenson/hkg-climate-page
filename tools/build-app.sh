@@ -28,7 +28,7 @@ javac -encoding UTF-8 -source 8 -target 8 -Xlint:-options -bootclasspath "$ANDRO
 
 # dex only our own classes (never build/stubs)
 # shellcheck disable=SC2046
-"$BUILD_TOOLS/d8" --min-api 19 --lib "$ANDROID_JAR" --output "$OUT" \
+"$BUILD_TOOLS/d8" --min-api 19 --lib "$ANDROID_JAR" --classpath build/stubs --output "$OUT" \
     $(find "$OUT/classes" -name '*.class' | sort)
 
 "$BUILD_TOOLS/aapt" package -f -M app/AndroidManifest.xml -I "$ANDROID_JAR" \
@@ -36,16 +36,33 @@ javac -encoding UTF-8 -source 8 -target 8 -Xlint:-options -bootclasspath "$ANDRO
 (cd "$OUT" && "$BUILD_TOOLS/aapt" add -k unsigned.apk classes.dex > /dev/null)
 "$BUILD_TOOLS/zipalign" -f 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
 
-# first run: make the signing key, with a random password nobody has to see
+# first run (both files missing): make the signing key, with a random password nobody has to see.
+# The key can't be replaced, so one file without the other is an error and nothing is touched.
 KEYS=private/keys
-if [ ! -f "$KEYS/hkgclimate.jks" ] || [ ! -f "$KEYS/password" ]; then
-    rm -f "$KEYS/hkgclimate.jks"
+if [ -f "$KEYS/hkgclimate.jks" ] && [ ! -f "$KEYS/password" ]; then
+    echo "error: $KEYS/password is missing. The existing key $KEYS/hkgclimate.jks was left alone." >&2
+    echo "Restore the password file (the key can't be replaced; updates need it)." >&2
+    exit 1
+fi
+if [ ! -f "$KEYS/hkgclimate.jks" ] && [ -f "$KEYS/password" ]; then
+    echo "error: $KEYS/hkgclimate.jks is missing. The existing $KEYS/password was left alone." >&2
+    echo "Restore the key file (the key can't be replaced; updates need it)." >&2
+    exit 1
+fi
+if [ ! -f "$KEYS/hkgclimate.jks" ]; then
     (umask 077 && mkdir -p "$KEYS" \
         && { LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | dd bs=32 count=1 2> /dev/null; echo; } > "$KEYS/password")
-    keytool -genkeypair -keystore "$KEYS/hkgclimate.jks" -storetype JKS -alias hkgclimate \
+    if ! keytool -genkeypair -keystore "$KEYS/hkgclimate.jks" -storetype JKS -alias hkgclimate \
         -keyalg RSA -keysize 2048 -validity 10950 -dname "CN=hkg-climate-page" \
-        -storepass:file "$KEYS/password" > /dev/null 2>&1
+        -storepass:file "$KEYS/password" > "$OUT/keytool.log" 2>&1; then
+        cat "$OUT/keytool.log" >&2
+        echo "error: keytool failed; removing the half-made $KEYS/password" >&2
+        rm -f "$KEYS/password" "$KEYS/hkgclimate.jks"
+        exit 1
+    fi
+    rm -f "$OUT/keytool.log"
 fi
+chmod 600 "$KEYS/hkgclimate.jks" "$KEYS/password"
 
 "$BUILD_TOOLS/apksigner" sign --ks "$KEYS/hkgclimate.jks" --ks-key-alias hkgclimate \
     --ks-pass "file:$KEYS/password" \
