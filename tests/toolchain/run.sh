@@ -1,7 +1,7 @@
 #!/bin/sh
 # Host test for tools/toolchain.sh and tools/test-java.sh: the check passes on this host,
-# names what is missing when the toolchain folder is absent, `env` exports the variables
-# later tools need, and `fetch` refuses a jar whose sha256 does not match the pin.
+# names what is missing when the toolchain folder is absent, `env` gives eval-able exports
+# with whole-file class paths, and `fetch` refuses a jar whose sha256 does not match the pin.
 # usage: sh tests/toolchain/run.sh
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 TC=$ROOT/tools/toolchain.sh
@@ -30,12 +30,17 @@ check "check exits 1 without the toolchain folder" [ $rc -eq 1 ]
 check "check says missing junit" has_line '^missing junit' "$TMP/gone.out"
 check "check says missing smali" has_line '^missing smali' "$TMP/gone.out"
 
-# env, run directly, prints export lines; sourced from sh it exports
-sh "$TC" env > "$TMP/env.out" 2>&1
-for v in ANDROID_JAR BUILD_TOOLS SMALI_CP BAKSMALI_CP JUNIT_CP PY QEMU_ARM MOCK_SH; do
-    check "env prints $v" has_line "^export $v=" "$TMP/env.out"
+# env is used as eval "$(tools/toolchain.sh env)"; run in a subshell so nothing leaks here
+env_out=$(eval "$(sh "$TC" env)" && for v in ANDROID_JAR BUILD_TOOLS SMALI_CP BAKSMALI_CP JUNIT_CP PY QEMU_ARM MOCK_SH; do
+    eval "[ -n \"\$$v\" ]" || echo "unset $v"; done)
+check "env sets all eight variables" [ -z "$env_out" ]
+check "env leaves the caller's shell options alone" sh -c "eval \"\$(sh '$TC' env)\"; case \$- in *e*) exit 1;; esac"
+check "env paths exist" sh -c "eval \"\$(sh '$TC' env)\" && [ -f \"\$ANDROID_JAR\" ] && [ -x \"\$PY\" ] && [ -d \"\$BUILD_TOOLS\" ]"
+# every class-path entry is one existing file (spaces or a bad join would break this)
+for v in SMALI_CP BAKSMALI_CP JUNIT_CP; do
+    bad=$(eval "$(sh "$TC" env)"; eval "cp=\$$v"; IFS=:; for f in $cp; do [ -f "$f" ] || echo "$f"; done)
+    check "$v entries are existing files" [ -z "$bad" ]
 done
-check "env exports when sourced" sh -c ". '$TC' env && [ -f \"\$ANDROID_JAR\" ] && [ -x \"\$PY\" ] && [ -n \"\$MOCK_SH\" ]"
 
 # fetch refuses an existing jar with the wrong sha256, before downloading anything
 mkdir -p "$TMP/tc/junit"
@@ -45,9 +50,12 @@ check "fetch exits 1 on a bad jar" [ $rc -eq 1 ]
 check "fetch reports the sha256 mismatch" has_line 'sha256 mismatch.*junit-4.13.2.jar' "$TMP/fetch.out"
 check "fetch downloaded nothing else" sh -c "[ \"\$(ls '$TMP/tc')\" = junit ] && [ \"\$(ls '$TMP/tc/junit')\" = junit-4.13.2.jar ]"
 
-# the Java test runner copes with there being no core code yet
-sh "$ROOT/tools/test-java.sh" > "$TMP/java.out" 2>&1; rc=$?
-check "test-java exits 0" [ $rc -eq 0 ]
+# the Java test runner says "no tests" and exits 0 when the tree has no core code
+mkdir -p "$TMP/root/tools"
+cp "$ROOT/tools/toolchain.sh" "$ROOT/tools/test-java.sh" "$TMP/root/tools/"
+TOOLCHAIN_DIR=$ROOT/private/toolchain sh "$TMP/root/tools/test-java.sh" > "$TMP/java.out" 2>&1; rc=$?
+check "test-java exits 0 with no core code" [ $rc -eq 0 ]
+check "test-java says no tests" has_line '^no tests' "$TMP/java.out"
 
 if [ $FAILS -ne 0 ]; then echo "$FAILS failed"; exit 1; fi
 echo "all passed"

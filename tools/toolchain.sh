@@ -2,25 +2,18 @@
 # Check, fetch and export the host build toolchain (kept in private/toolchain, git-ignored).
 # usage: tools/toolchain.sh check   one "ok <name> <path>" line per tool; exit 1 if any is missing
 #        tools/toolchain.sh fetch   download the missing Maven Central jars (sha1 + pinned sha256)
-#        . tools/toolchain.sh env   export ANDROID_JAR BUILD_TOOLS SMALI_CP BAKSMALI_CP JUNIT_CP
-#                                   PY QEMU_ARM MOCK_SH into the calling shell
-#        tools/toolchain.sh env     the same, printed as export lines (eval "$(tools/toolchain.sh env)")
+#        tools/toolchain.sh env     print export lines for ANDROID_JAR BUILD_TOOLS SMALI_CP BAKSMALI_CP
+#                                   JUNIT_CP PY QEMU_ARM MOCK_SH; use: eval "$(tools/toolchain.sh env)"
 # environment: TOOLCHAIN_DIR (default <repo>/private/toolchain), ANDROID_SDK (default ~/Android/sdk)
 
-# Sourced, $0 is the caller (never toolchain.sh), so the script must not set -e or exit then.
-case ${0##*/} in toolchain.sh) TC_SOURCED=0; set -e ;; *) TC_SOURCED=1 ;; esac
-
-TC_SRC=${BASH_SOURCE:-$0}
-case $TC_SRC in
-    */toolchain.sh) TC_ROOT=$(cd "$(dirname "$TC_SRC")/.." && pwd) ;;
-    *) TC_ROOT=$(git rev-parse --show-toplevel) ;;
-esac
+set -e
+TC_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TOOLCHAIN_DIR=${TOOLCHAIN_DIR:-$TC_ROOT/private/toolchain}
 ANDROID_SDK=${ANDROID_SDK:-$HOME/Android/sdk}
 TC_BUILD_TOOLS=$ANDROID_SDK/build-tools/30.0.3
 TC_MAVEN=https://repo1.maven.org/maven2
 
-# Maven Central jars: <folder under TOOLCHAIN_DIR> <path under the repo> <pinned sha256>
+# Maven Central jars: <folder under TOOLCHAIN_DIR> <path under Maven Central> <pinned sha256>
 tc_jars() {
     cat <<LIST
 smali org/smali/smali/2.5.2/smali-2.5.2.jar 136c5c4653d6531bd7b6f10f35f8691cb96432e727d30b4d5579826ee01e9419
@@ -50,9 +43,10 @@ tc_env() {
     PY=$TOOLCHAIN_DIR/venv/bin/python
     ANDROID_JAR=$ANDROID_SDK/platforms/android-19/android.jar
     BUILD_TOOLS=$TC_BUILD_TOOLS
-    _common="util-2.5.2 dexlib2-2.5.2 guava-31.0.1-jre failureaccess-1.0.1 jcommander-1.64 jsr305-3.0.2"
-    SMALI_CP=$(tc_cp smali smali-2.5.2 $_common antlr-2.7.7 antlr-runtime-3.5.2 stringtemplate-3.2.1)
-    BAKSMALI_CP=$(tc_cp smali baksmali-2.5.2 $_common)
+    SMALI_CP=$(tc_cp smali smali-2.5.2 util-2.5.2 dexlib2-2.5.2 guava-31.0.1-jre failureaccess-1.0.1 \
+        jcommander-1.64 jsr305-3.0.2 antlr-2.7.7 antlr-runtime-3.5.2 stringtemplate-3.2.1)
+    BAKSMALI_CP=$(tc_cp smali baksmali-2.5.2 util-2.5.2 dexlib2-2.5.2 guava-31.0.1-jre failureaccess-1.0.1 \
+        jcommander-1.64 jsr305-3.0.2)
     JUNIT_CP=$(tc_cp junit junit-4.13.2 hamcrest-core-1.3)
     QEMU_ARM=$(command -v qemu-arm-static || command -v qemu-arm || true)
     if command -v mksh > /dev/null 2>&1; then MOCK_SH=mksh; else MOCK_SH="bash --posix"; fi
@@ -143,13 +137,9 @@ $(tc_jars)
 LIST
 }
 
-if [ "$TC_SOURCED" -eq 1 ]; then
-    if [ "${1:-}" = env ]; then tc_env; fi
-else
-    case ${1:-} in
-        check) tc_check ;;
-        fetch) tc_fetch ;;
-        env) tc_env; tc_print_env ;;
-        *) echo "usage: tools/toolchain.sh check|fetch|env" >&2; exit 2 ;;
-    esac
-fi
+case ${1:-} in
+    check) tc_check ;;
+    fetch) tc_fetch ;;
+    env) tc_env; tc_print_env ;;
+    *) echo "usage: tools/toolchain.sh check|fetch|env" >&2; exit 2 ;;
+esac
