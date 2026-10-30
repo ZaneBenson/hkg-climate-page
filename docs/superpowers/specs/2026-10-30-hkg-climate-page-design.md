@@ -29,6 +29,11 @@ a cold or hot morning means many separate taps. The owner wants:
     four on the page; more presets are allowed in the settings app but only the first four
     in its order are shown.)*
   - a way to open the settings app from the page. *(My call: a small gear button.)*
+- **Version 1 layout (owner's choice, 2026-10-30, mockup "B"):** the seat buttons at their
+  final size in the upper part; below them, four greyed-out preset slots (two rows of two)
+  until presets arrive in version 2; at the bottom, while seat commands are not yet
+  approved, a yellow strip "Test mode: taps are logged, not sent". Each seat button also
+  shows its state in words ("Driver · heat mid").
 - **Seat button:** each tap steps off -> high -> mid -> low -> off (the stock order). Below
   the switch temperature it heats, at or above it cools. The mode is chosen when the seat
   goes from off to on; while on, taps keep that mode until it returns to off (no flapping).
