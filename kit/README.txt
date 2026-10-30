@@ -9,11 +9,14 @@ hkg-climate kit (read-only) - collects what the hkg-climate-page research needs
    finished, unplug the drive" (a few minutes: it copies about 190 MB), then
    unplug the drive.
 4. The kit writes an HKGCLIMATE folder on the drive. It holds Hyundai system
-   files and the Android log: keep it private and never post it. Send it only
-   to the person who asked for it.
+   files, the Android log and, if HKG Climate Page was ever installed, its
+   install log (hkg.climate.page.log): keep it private and never post it. Send
+   it only to the person who asked for it.
 
 Nothing on the car is changed and no vehicle commands are sent. No files are
 copied from accounts, paired phone data, Wi-Fi settings, the vehicle security
-partition or /data. The Android log is copied as-is, though, and can hold phone
-and contact names, Bluetooth addresses and other ids the car logs: another
-reason to keep the folder private.
+partition or /data, except HKG Climate Page's own install log
+(/data/nemesis/hkg.climate.page.log, which holds only its install messages).
+The Android log is copied as-is, though, and can hold phone and contact names,
+Bluetooth addresses and other ids the car logs: another reason to keep the
+folder private.

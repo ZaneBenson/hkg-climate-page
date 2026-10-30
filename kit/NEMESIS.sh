@@ -5,18 +5,21 @@
 # USB drive:
 #   summary.txt         firmware id, target-car check, free space, memory, the
 #                       split-screen page settings (ss_setting*)
-#   collected.txt       one line per file in FILES: ok / FAIL / missing
+#   collected.txt       one line per file in FILES, plus the install log: ok / FAIL /
+#                       missing
 #   probe.txt           four seat-state reads (stock services' cached values), as root
 #                       and as an ordinary app uid, to see if a normal app can read them
 #   logcat-full.txt     the Android log (about the last minute): can hold phone and
 #                       contact names, Bluetooth addresses and other ids the car logs
+#   hkg.climate.page.log  the HKG Climate Page install and uninstall log (only our
+#                       own install messages), if the package was ever installed
 #   stock/              the stock files listed in FILES, /init.environ.rc and the
 #                       /system/app and /system/priv-app listings
 #
 # HKGCLIMATE/ holds Hyundai files and logs: keep it private, never post it.
-# No vehicle commands are sent. No files are copied from /data, the vehicle security
-# partition, accounts, paired phone data or Wi-Fi settings; but the Android log is
-# copied as-is (see logcat-full.txt above).
+# No vehicle commands are sent. No files are copied from /data (except our own install
+# log above), the vehicle security partition, accounts, paired phone data or Wi-Fi
+# settings; but the Android log is copied as-is (see logcat-full.txt above).
 #
 # Host tests set KIT_SYSROOT (a fake root) and KIT_TEST_PATH (stub commands).
 export PATH=${KIT_TEST_PATH:+$KIT_TEST_PATH:}/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
@@ -105,6 +108,16 @@ done < "$KIT/FILES"
 ls -l "$SYS/system/app" > "$STOCK/app-listing.txt" 2>&1
 ls -l "$SYS/system/priv-app" > "$STOCK/priv-app-listing.txt" 2>&1
 cat "$SYS/init.environ.rc" > "$STOCK/init.environ.rc" 2>/dev/null
+
+# our own install log: the one file taken from /data
+_f=/data/nemesis/hkg.climate.page.log
+if [ ! -f "$SYS$_f" ]; then
+    echo "missing $_f" >> "$COLLECT"
+elif cp "$SYS$_f" "$OUT/" 2>/dev/null; then
+    echo "ok   $_f" >> "$COLLECT"
+else
+    echo "FAIL $_f" >> "$COLLECT"
+fi
 
 say ""
 say "done"

@@ -11,9 +11,12 @@ check() {
     if "$@"; then echo "ok   $_name"; else echo "FAIL $_name"; FAILS=$((FAILS + 1)); fi
 }
 
-# fake_root <dir>: a stock-like tree; DisplaySettings.odex is deliberately missing
+# fake_root <dir>: a stock-like tree; DisplaySettings.odex is deliberately missing. Our install
+# log is there, beside another /data file the kit must not take
 fake_root() {
-    mkdir -p "$1/system/app" "$1/system/priv-app" "$1/system/framework" "$1/proc"
+    mkdir -p "$1/system/app" "$1/system/priv-app" "$1/system/framework" "$1/proc" "$1/data/nemesis"
+    echo "postinstall hkg.climate.page" > "$1/data/nemesis/hkg.climate.page.log"
+    echo "not ours" > "$1/data/nemesis/other.log"
     echo "stock automotive" > "$1/system/framework/automotive.odex"
     for n in RightScreenHome.apk RightScreenHome.odex DisplaySettings.apk \
              Settings_W.apk Settings_W.odex SettingsCommon.apk SettingsCommon.odex; do
@@ -60,6 +63,15 @@ check "priv-app listing"           grep -q 'SystemUI.apk' "$O/stock/priv-app-lis
 check "app listing"                grep -q 'RightScreenHome.apk' "$O/stock/app-listing.txt"
 check "finishes with done"         last_line_done "$O/summary.txt"
 check "toast shown"                grep -q 'com.hkmc.intent.action.TOAST' "$R/am.log"
+check "install log copied"         cmp -s "$R/data/nemesis/hkg.climate.page.log" "$O/hkg.climate.page.log"
+check "install log recorded"       grep -q '^ok   /data/nemesis/hkg.climate.page.log$' "$O/collected.txt"
+check "nothing else from /data"    sh -c "! grep -rq 'not ours' '$O'"
+
+# --- no install log (the package was never installed)
+R=$T/h; D=$T/h-drive; fake_root "$R"; rm "$R/data/nemesis/hkg.climate.page.log"; run_kit "$R" "$D"
+check "no install log: recorded"   grep -q '^missing /data/nemesis/hkg.climate.page.log$' "$D/HKGCLIMATE/collected.txt"
+check "no install log: no file"    test ! -e "$D/HKGCLIMATE/hkg.climate.page.log"
+check "no install log: finishes"   last_line_done "$D/HKGCLIMATE/summary.txt"
 
 # --- other car: still collects, but says so
 R=$T/b; D=$T/b-drive; fake_root "$R"
@@ -92,6 +104,10 @@ R=$T/e; D=$T/e-drive; fake_root "$R"
 FAKE_CP_FAIL=RightScreenHome.apk run_kit "$R" "$D"
 check "copy failure recorded"      grep -q '^FAIL /system/app/RightScreenHome.apk$' "$D/HKGCLIMATE/collected.txt"
 check "copy failure finishes"      last_line_done "$D/HKGCLIMATE/summary.txt"
+R=$T/i; D=$T/i-drive; fake_root "$R"
+FAKE_CP_FAIL=hkg.climate.page.log run_kit "$R" "$D"
+check "install log copy failure recorded" grep -q '^FAIL /data/nemesis/hkg.climate.page.log$' "$D/HKGCLIMATE/collected.txt"
+check "install log copy failure finishes" last_line_done "$D/HKGCLIMATE/summary.txt"
 
 # --- second run on the same drive replaces the old output
 R=$T/f; D=$T/f-drive; fake_root "$R"; run_kit "$R" "$D"
