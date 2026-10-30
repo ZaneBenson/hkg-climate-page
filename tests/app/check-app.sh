@@ -1,7 +1,8 @@
 #!/bin/sh
 # Host check of the app build: builds the signed APK and asserts its manifest facts, its v1
 # signature, a few calls its code must make, that no stock stub class is packaged, and that the
-# only send-path references are the approved seat calls, inside UsmSeatCalls.
+# only send-path references are the approved seat calls, inside UsmSeatCalls, which only
+# CheckedSeatSender.send calls.
 # usage: sh tests/app/check-app.sh   (prints one line per check; exit 1 if any check fails)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 eval "$("$ROOT/tools/toolchain.sh" env)"
@@ -86,6 +87,19 @@ no_typed_catch_in() {
         incls && /^ +L[^ ]*; -> 0x/ { print; n++ }
         END { exit n > 0 }' "$1"
 }
+# seat_calls_only_in <dexdump -d output> <class.method:>: the code calls the seat setters
+# (UsmCalls.driver/passenger, or UsmSeatCalls.driver/passenger directly) somewhere, and only in
+# the code of that one method. Prints the offending lines.
+seat_calls_only_in() {
+    awk -v want="$2" '
+        /Class descriptor/ { meth = "" }
+        /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m }
+        index($0, "Lhkgclimate/core/UsmCalls;.driver:") || index($0, "Lhkgclimate/core/UsmCalls;.passenger:") \
+            || index($0, "Lhkgclimate/app/UsmSeatCalls;.driver:") || index($0, "Lhkgclimate/app/UsmSeatCalls;.passenger:") {
+            n++; if (index(meth, want) != 1) { print; bad++ }
+        }
+        END { exit !(n > 0 && bad == 0) }' "$1"
+}
 # usm_strings_ok <classes.dex>: no string in the dex names the stock seat service other than the
 # one allowed type descriptor Lcom/hkmc/usm/USMManager; (a service looked up by name, or a class
 # loaded by name, would otherwise pass the code checks)
@@ -112,7 +126,7 @@ sys.exit(1 if bad else 0)
 PY
 }
 
-# self-tests of has_ref and usm_refs_ok on throwaway dexes. The scratch sources (a com.hkmc.usm
+# self-tests of has_ref, usm_refs_ok and the other code checks on throwaway dexes. The scratch sources (a com.hkmc.usm
 # USMManager with one extra member, and a com.hkmc.usm.Seat) live only in $TMP; they are never in
 # the repo or the APK.
 ST=$TMP/st
@@ -158,6 +172,13 @@ scratch_dex eager UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { com
 scratch_dex name UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { Object go() throws Exception { return Class.forName("android.os.ServiceManager").getMethod("getService", String.class).invoke(null, "com.hkmc.micom.usm"); } }'
 scratch_dex fin UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { com.hkmc.usm.USMManager m; void go() { boolean ok = false; try { m.setFrontSeatHeatDrvStep(3); ok = true; } finally { if (!ok) m = null; } } }'
 scratch_dex catcher UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { void go(com.hkmc.usm.USMManager m) { try { m.setFrontSeatHeatDrvStep(3); } catch (RuntimeException e) { } } }'
+# the seat setters: CheckedSeatSender.send is the one allowed caller (UsmCalls is a scratch copy
+# of our own interface, declared next to its callers)
+SEND_IFACE='package hkgclimate.core; public interface UsmCalls { void driver(int v) throws Exception; void passenger(int v) throws Exception; }'
+scratch_dex sendok UsmCalls "$SEND_IFACE class CheckedSeatSender { UsmCalls c; void send(int v) throws Exception { c.driver(v); c.passenger(v); } }"
+scratch_dex sendother UsmCalls "$SEND_IFACE class CheckedSeatSender { UsmCalls c; void send(int v) throws Exception { c.driver(v); } } class Other { void go(UsmCalls c) throws Exception { c.driver(3); } }"
+scratch_dex sendset UsmCalls "$SEND_IFACE class CheckedSeatSender { UsmCalls c; void send(int v) throws Exception { c.driver(v); } void set(int v) throws Exception { c.passenger(v); } }"
+scratch_dex sendapp Other 'package hkgclimate.app; class UsmSeatCalls { void driver(int v) { } void passenger(int v) { } } public class Other { void go(UsmSeatCalls c) { c.passenger(3); } }'
 # usm_flags / usm_passes <listing> <ref>: the listing has <ref> (so the scratch build worked) and
 # usm_refs_ok fails / passes on it
 usm_flags() { grep -q "$2" "$1" && ! usm_refs_ok "$1"; }
@@ -170,6 +191,13 @@ strings_pass() { [ -s "$1/code.txt" ] && grep -q 'Lcom/hkmc/usm/USMManager;' "$1
 strings_flag() { grep -q "const-string.*\"$2\"" "$1/code.txt" && ! usm_strings_ok "$1/classes.dex"; }
 # catch_flags <listing> <class>: the listing has a typed catch and no_typed_catch_in fails on it
 catch_flags() { grep -q 'Ljava/lang/RuntimeException; -> 0x' "$1" && ! no_typed_catch_in "$1" "$2"; }
+# catch_passes <listing> <class>: the listing has a finally block (so the scratch build worked)
+# and no_typed_catch_in passes on it
+catch_passes() { grep -q '<any> -> 0x' "$1" && no_typed_catch_in "$1" "$2"; }
+# send_flags <listing> <ref>: the listing has <ref> and seat_calls_only_in fails on it
+send_flags() { grep -q "$2" "$1" && ! seat_calls_only_in "$1" 'hkgclimate.core.CheckedSeatSender.send:'; }
+# send_none_fails <listing>: the listing has code but no seat call, and seat_calls_only_in fails
+send_none_fails() { grep -q '|\[' "$1" && ! seat_calls_only_in "$1" 'hkgclimate.core.CheckedSeatSender.send:'; }
 check "self-test: the reference check finds a scratch com.hkmc.usm call" has_ref "$ST/caller/code.txt" 'Lcom/hkmc/usm/'
 check "self-test: usm check flags a com.hkmc.usm call from another class" \
     usm_flags "$ST/caller/code.txt" 'Lcom/hkmc/usm/Seat;\.send'
@@ -190,9 +218,19 @@ check "self-test: the string check passes the allowed USMManager descriptor" \
 check "self-test: the string check flags a service looked up by the name com.hkmc.micom.usm" \
     strings_flag "$ST/name" 'com.hkmc.micom.usm'
 check "self-test: the catch check passes UsmSeatCalls with a finally block" \
-    no_typed_catch_in "$ST/fin/code.txt" 'Lhkgclimate/app/UsmSeatCalls;'
+    catch_passes "$ST/fin/code.txt" 'Lhkgclimate/app/UsmSeatCalls;'
 check "self-test: the catch check flags UsmSeatCalls catching an exception" \
     catch_flags "$ST/catcher/code.txt" 'Lhkgclimate/app/UsmSeatCalls;'
+check "self-test: the seat-call check passes calls made only in CheckedSeatSender.send" \
+    seat_calls_only_in "$ST/sendok/code.txt" 'hkgclimate.core.CheckedSeatSender.send:'
+check "self-test: the seat-call check flags another class calling UsmCalls.driver" \
+    send_flags "$ST/sendother/code.txt" 'hkgclimate.core.Other.go:'
+check "self-test: the seat-call check flags another CheckedSeatSender method calling UsmCalls.passenger" \
+    send_flags "$ST/sendset/code.txt" 'UsmCalls;\.passenger:'
+check "self-test: the seat-call check flags another class calling UsmSeatCalls.passenger" \
+    send_flags "$ST/sendapp/code.txt" 'UsmSeatCalls;\.passenger:'
+check "self-test: the seat-call check fails a listing with no seat call" \
+    send_none_fails "$ST/caller/code.txt"
 
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
 check "versionName is 0.2.0-test2" grep -q "versionName='0.2.0-test2'" "$TMP/badging"
@@ -254,6 +292,9 @@ check "UsmSeatCalls.passenger can clear the cached manager" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.passenger:' 'iput-object.*UsmSeatCalls;\.usm:'
 check "UsmSeatCalls catches no exception (CheckedSeatSender does)" \
     no_typed_catch_in "$TMP/dexcode.txt" 'Lhkgclimate/app/UsmSeatCalls;'
+# the one place the seat setters are called: the checked sender, after its value check
+check "the seat setters are called only from CheckedSeatSender.send" \
+    seat_calls_only_in "$TMP/dexcode.txt" 'hkgclimate.core.CheckedSeatSender.send:'
 check "ClimateService builds the CheckedSeatSender" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/CheckedSeatSender;\.<init>'
 check "ClimateService builds the TestModeCommander" \
