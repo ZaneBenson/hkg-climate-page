@@ -69,6 +69,12 @@ check "dex has core classes" grep -q "Lhkgclimate/core/ClimateCore;" "$TMP/dex.t
 check "dex lists classes" grep -q "Class descriptor" "$TMP/dex.txt"
 check "dex has no class under Lcom/hkmc/" sh -c "! grep -q \"Class descriptor *: *'Lcom/hkmc/\" $TMP/dex.txt"
 check "dex code listing contains our code" grep -q 'hkgclimate.app.SettingsActivity.onCreate' "$TMP/dexcode.txt"
+# the stock services we read: referenced from code, the service name as a real field read (a
+# constant would have been inlined by javac), and the DATC manager never constructed directly
+check "code calls DATCManager.addTemperatureListener" has_ref "$TMP/dexcode.txt" 'Lcom/hkmc/datc/DATCManager;\.addTemperatureListener'
+check "code calls BCMManager.getDrvSeatHeatState" has_ref "$TMP/dexcode.txt" 'Lcom/hkmc/bcm/BCMManager;\.getDrvSeatHeatState'
+check "code reads the field VehicleInfoManager.DATC_SERVICE (sget-object)" has_ref "$TMP/dexcode.txt" 'sget-object.*Lcom/hkmc/VehicleInfoManager;\.DATC_SERVICE'
+check "code never constructs DATCManager" sh -c "! grep -q 'Lcom/hkmc/datc/DATCManager;\.<init>' $TMP/dexcode.txt"
 check "dex has no reference to Lcom/hkmc/usm/" sh -c "! grep -q 'Lcom/hkmc/usm/' $TMP/dexcode.txt"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
