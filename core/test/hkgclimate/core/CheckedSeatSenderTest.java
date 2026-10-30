@@ -12,14 +12,18 @@ public class CheckedSeatSenderTest {
     static class FakeCalls implements UsmCalls {
         final List<String> calls = new ArrayList<String>();
         Throwable toThrow;
+        /** When set, the car's seat state reports this value while the call is still running. */
+        SendWatch stateDuringCall;
 
         public void driver(int value) throws Exception {
             calls.add("driver " + value);
+            if (stateDuringCall != null) stateDuringCall.onState(Seat.DRIVER, value);
             throwIfSet();
         }
 
         public void passenger(int value) throws Exception {
             calls.add("passenger " + value);
+            if (stateDuringCall != null) stateDuringCall.onState(Seat.PASSENGER, value);
             throwIfSet();
         }
 
@@ -93,6 +97,27 @@ public class CheckedSeatSenderTest {
         assertNull(watch.overdue(1000 + SendWatch.WAIT_MS - 1));
         assertEquals("no change after 3 s: setFrontSeatHeatDrvStep 8",
                 watch.overdue(1000 + SendWatch.WAIT_MS));
+    }
+
+    @Test
+    public void aStateMatchingTheValueDuringTheCallClearsTheSend() {
+        // a fast seat callback can arrive before set() returns: the send must already be recorded
+        calls.stateDuringCall = watch;
+        sender.set(Seat.DRIVER, 8);
+        sender.set(Seat.PASSENGER, 3);
+        assertEquals(2, calls.calls.size());
+        assertEquals("sent setFrontSeatHeatAstStep 3", sender.lastResult());
+        assertNull(watch.overdue(1000000));
+    }
+
+    @Test
+    public void aFailedSendLeavesNothingPending() {
+        sender.set(Seat.DRIVER, 8);          // pending, then replaced by the failing send
+        calls.toThrow = new SecurityException("denied");
+        sender.set(Seat.DRIVER, 7);
+        sender.set(Seat.PASSENGER, 3);
+        assertEquals(3, calls.calls.size());
+        assertNull(watch.overdue(1000000));
     }
 
     @Test

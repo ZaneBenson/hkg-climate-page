@@ -41,6 +41,19 @@ public class SendWatchTest {
     }
 
     @Test
+    public void clearForgetsThePendingSendForThatSeatOnly() {
+        SendWatch w = new SendWatch();
+        w.sent(Seat.DRIVER, 8, 0);
+        w.sent(Seat.PASSENGER, 4, 0);
+        w.clear(Seat.PASSENGER);
+        assertEquals(DRV8, w.overdue(3000));
+        assertNull(w.overdue(3000));
+        // clearing a seat with nothing pending is harmless
+        w.clear(Seat.DRIVER);
+        assertNull(w.overdue(99999));
+    }
+
+    @Test
     public void seatsAreIndependent() {
         SendWatch w = new SendWatch();
         w.sent(Seat.DRIVER, 8, 0);

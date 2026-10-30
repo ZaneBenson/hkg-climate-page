@@ -3,8 +3,9 @@ package hkgclimate.core;
 /**
  * Sends a seat step through the stock service, but only a value the stock controls are known to
  * send (2..8) for a known seat. Anything else is refused with no call. Failures are logged, never
- * thrown, and never retried. This is the safety boundary for the send: nothing it calls (the log,
- * the clock, the watch) can make set() throw or make the stock call twice.
+ * thrown, and never retried. A sent value is handed to the watch just before the stock call
+ * (and taken off it if the call fails). This is the safety boundary for the send: nothing it
+ * calls (the log, the clock, the watch) can make set() throw or make the stock call twice.
  */
 public final class CheckedSeatSender implements SeatCommander {
     private final UsmCalls calls;
@@ -31,8 +32,8 @@ public final class CheckedSeatSender implements SeatCommander {
         try {
             send(seat, value);
         } catch (Throwable t) {
-            // only the log text, the clock or the watch can get here, after the one call (if any):
-            // never call again
+            // the log, the clock and the watch are guarded in send(); anything else that gets
+            // here is never followed by another call
         }
     }
 
@@ -46,15 +47,35 @@ public final class CheckedSeatSender implements SeatCommander {
             record("send refused " + method + " " + value);
             return;
         }
+        // pending before the call: the seat state can report the value before the call returns
+        watchSend(seat, value);
         try {
             if (seat == Seat.DRIVER) calls.driver(value);
             else calls.passenger(value);
         } catch (Throwable t) {
+            forgetSend(seat);
             record("send failed " + method + " " + value + ": " + describe(t));
             return;
         }
         record("sent " + method + " " + value);
-        watch.sent(seat, value, clock.now());
+    }
+
+    /** Hands the send to the watch; a failing clock or watch is ignored and the send goes ahead. */
+    private void watchSend(Seat seat, int value) {
+        try {
+            watch.sent(seat, value, clock.now());
+        } catch (Throwable t) {
+            // the send is just not watched
+        }
+    }
+
+    /** Takes a failed send off the watch; a failing watch is ignored. */
+    private void forgetSend(Seat seat) {
+        try {
+            watch.clear(seat);
+        } catch (Throwable t) {
+            // nothing more to do
+        }
     }
 
     /** The last text this sender logged (sent, refused or failed), or null before any. */

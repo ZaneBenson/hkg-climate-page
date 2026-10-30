@@ -18,6 +18,11 @@ public final class SendWatch {
         at[i] = now;
     }
 
+    /** Forgets the seat's pending send, e.g. when the stock call for it failed. */
+    public synchronized void clear(Seat seat) {
+        pending[seat.ordinal()] = false;
+    }
+
     public synchronized void onState(Seat seat, int stateValue) {
         int i = seat.ordinal();
         if (pending[i] && value[i] == stateValue) pending[i] = false;
