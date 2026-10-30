@@ -1,0 +1,7 @@
+dist/
+HKGCLIMATE/
+*.apk
+*.odex
+*.jar
+*.dex
+.superpowers/
