@@ -79,6 +79,8 @@ public class PresetRunnerTest {
         int wokenFanRaw = 1;
         boolean ignoreFan;
         boolean wrongWay;
+        /** Each fan press moves the fan the opposite way, wrapping from 2 to 9 and back. */
+        boolean fanWrongWay;
         boolean staysInAuto;
         Exception climateThrows;
         int reads;
@@ -126,6 +128,8 @@ public class PresetRunnerTest {
                 case 4:
                     if (ignoreFan) break;
                     if (fanRaw == 1) fanRaw = 2;
+                    else if (fanWrongWay) fanRaw = value == 1 ? (fanRaw == 2 ? 9 : fanRaw - 1)
+                            : (fanRaw == 9 ? 2 : fanRaw + 1);
                     else fanRaw = Math.max(2, Math.min(9, fanRaw + (value == 1 ? 1 : -1)));
                     if (!staysInAuto) auto = 0;
                     break;
@@ -423,6 +427,28 @@ public class PresetRunnerTest {
         run(preset(L, L, L, 70, L, L, L, L));
         assertEquals(Collections.nCopies(25, "climate 50 2"), car.calls);
         assertEquals("Cold: not done: 70 °F (stopped after 25 presses)", runner.lastResult());
+    }
+
+    @Test
+    public void aFanMovingTheWrongWayStopsAtTheCap() {
+        assertEquals(10, PresetRunner.FAN_CAP);
+        car.fanWrongWay = true;
+        car.fanRaw = 5;
+        run(preset(L, L, L, L, 6, L, L, L));
+        assertEquals(10, car.calls.size());
+        assertEquals(Collections.nCopies(4, "climate 4 1"), car.calls.subList(0, 4));
+        assertEquals("Cold: not done: fan 6 (stopped after 10 presses)", runner.lastResult());
+    }
+
+    @Test
+    public void manualInAutoAtAMidRangeFanMatchPressesUpThenDownAndEndsAtTarget() {
+        car.auto = 1;
+        car.fanRaw = 5; // fan 4, already the target
+        run(preset(L, L, Preset.CLIMATE_MANUAL, L, 4, L, L, L));
+        assertEquals(Arrays.asList("climate 4 1", "climate 4 2"), car.calls);
+        assertEquals(5, car.fanRaw);
+        assertEquals(0, car.auto);
+        assertEquals("Cold: fan 4 (2 steps), manual", runner.lastResult());
     }
 
     @Test

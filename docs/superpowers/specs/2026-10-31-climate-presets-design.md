@@ -179,3 +179,17 @@ reports any item that did not reach its target on the settings screen; it never 
 - How the would-set (log-only) mode for the new commands is switched off once approved (a
   build constant, as with the seats).
 - Where the result of the last preset shows (today: the settings screen's command line).
+
+## Errata after building (2026-10-31)
+
+- **Celsius temperature choices:** the editor offers the whole-degree Fahrenheit values 62 to
+  82 shown in Celsius (16.5 and 28.0 at the ends), and the runner clamps them to the stock range
+  17.0 to 27.0. The 0.5 degree steps between are not all offered. This is a known limitation,
+  since a preset stores whole degrees Fahrenheit.
+- **Slots with non-seat items are always enabled:** a preset slot that has any steering-wheel,
+  eco or cabin item is never greyed out. A tap reports the items whose service is not ready,
+  instead of the slot being disabled up front.
+- **Manual with the climate off:** a Manual preset tapped while the climate is off may not wake
+  it into manual. The fan reads 0 (unknown) while the climate is off, and items that already
+  match are not forced outside auto. To be decided after the next capture (checklist step 7,
+  "Hot" with the climate off).

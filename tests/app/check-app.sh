@@ -3,7 +3,8 @@
 # signature, a few calls its code must make, that no stock stub class is packaged, and that the
 # only send-path references are the approved calls: the seat, steering-wheel and eco setters inside
 # UsmSeatCalls and setFrontClimateControl inside DatcClimateCalls, reached only through
-# CheckedSeatSender.send (seats) or CheckedCabinSender and StockCabinCalls (presets).
+# CheckedSeatSender.send (seats) or CheckedCabinSender and StockCabinCalls (presets), and
+# CheckedCabinSender's own sending methods reached only from PresetRunner.
 # usage: sh tests/app/check-app.sh   (prints one line per check; exit 1 if any check fails)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 eval "$("$ROOT/tools/toolchain.sh" env)"
@@ -158,6 +159,9 @@ datc_refs_ok() {
 # the preset fences (refs_only_in): the cabin calls, reached only through CheckedCabinSender
 CABIN_REFS='Lhkgclimate/core/CabinCalls;.climate: Lhkgclimate/core/CabinCalls;.wheel: Lhkgclimate/core/CabinCalls;.eco: Lhkgclimate/app/StockCabinCalls;.climate: Lhkgclimate/app/StockCabinCalls;.wheel: Lhkgclimate/app/StockCabinCalls;.eco:'
 CABIN_FROM='hkgclimate.core.CheckedCabinSender.'
+# CheckedCabinSender's three sending methods, reached only from the PresetRunner
+SENDER_REFS='Lhkgclimate/core/CheckedCabinSender;.climate: Lhkgclimate/core/CheckedCabinSender;.eco: Lhkgclimate/core/CheckedCabinSender;.wheelPress:'
+SENDER_FROM='hkgclimate.core.PresetRunner.'
 # the two stock-call classes' cabin setters, reached only through StockCabinCalls
 STOCK_REFS='Lhkgclimate/app/DatcClimateCalls;.send: Lhkgclimate/app/UsmSeatCalls;.wheel: Lhkgclimate/app/UsmSeatCalls;.eco:'
 STOCK_FROM='hkgclimate.app.StockCabinCalls.'
@@ -290,6 +294,12 @@ scratch_dex cabinok CabinCalls "$CABIN_IFACE class CheckedCabinSender { CabinCal
 scratch_dex cabinout CabinCalls "$CABIN_IFACE class CheckedCabinSender { CabinCalls c; void eco(int v) throws Exception { c.eco(v); } } class Other { void go(CabinCalls c) throws Exception { c.wheel(1); } }"
 scratch_dex cabinstock Other 'package hkgclimate.app; class StockCabinCalls { public void climate(int f, int v) { } } public class Other { void go(StockCabinCalls s) { s.climate(51, 1); } }'
 STOCK_CLASSES='package hkgclimate.app; class DatcClimateCalls { void send(int f, int v) { } } class UsmSeatCalls { void wheel(int v) { } void eco(int v) { } } class StockCabinCalls { DatcClimateCalls d; UsmSeatCalls u; void climate(int f, int v) { d.send(f, v); } void wheel(int v) { u.wheel(v); } void eco(int v) { u.eco(v); } }'
+# CheckedCabinSender's sending methods: PresetRunner is the one allowed caller (a scratch copy of
+# the sender; wheelPending is not a sending method)
+SENDER_CLASS='package hkgclimate.core; public class CheckedCabinSender { public boolean climate(int f, int v) { return true; } public boolean eco(int v) { return true; } public boolean wheelPress(Object s) { return true; } public boolean wheelPending() { return false; } }'
+scratch_dex runnerok CheckedCabinSender "$SENDER_CLASS class PresetRunner { CheckedCabinSender s; void go() { s.climate(8, 1); s.eco(2); s.wheelPress(null); s.wheelPending(); } }"
+scratch_dex runnerother CheckedCabinSender "$SENDER_CLASS class PresetRunner { CheckedCabinSender s; void go() { s.climate(8, 1); } } class Other { void go(CheckedCabinSender s) { s.wheelPress(null); } }"
+scratch_dex runnerstray CheckedCabinSender "$SENDER_CLASS class PresetRunner { CheckedCabinSender s; void go() { s.climate(8, 1); } } class ClimateCore { void tap(CheckedCabinSender s) { s.eco(2); } }"
 scratch_dex stockok StockCabinCalls "$STOCK_CLASSES"
 scratch_dex stockwheel StockCabinCalls "$STOCK_CLASSES class Other { void go(UsmSeatCalls u) { u.wheel(1); } }"
 scratch_dex stocksend StockCabinCalls "$STOCK_CLASSES class Other { void go(DatcClimateCalls d) { d.send(8, 1); } }"
@@ -425,6 +435,18 @@ check "self-test: the cabin-call check flags a direct StockCabinCalls.climate ca
 # shellcheck disable=SC2086
 check "self-test: the cabin-call check fails a listing with no cabin call" \
     fails refs_only_in "$ST/caller/code.txt" "$CABIN_FROM" $CABIN_REFS
+# shellcheck disable=SC2086
+check "self-test: the sender-call check passes calls made only in PresetRunner" \
+    only_passes "$ST/runnerok/code.txt" 'CheckedCabinSender;\.wheelPress:' "$SENDER_FROM" $SENDER_REFS
+# shellcheck disable=SC2086
+check "self-test: the sender-call check flags another class calling wheelPress" \
+    only_flags "$ST/runnerother/code.txt" 'hkgclimate.core.Other.go:' "$SENDER_FROM" $SENDER_REFS
+# shellcheck disable=SC2086
+check "self-test: the sender-call check flags ClimateCore calling eco" \
+    only_flags "$ST/runnerstray/code.txt" 'hkgclimate.core.ClimateCore.tap:' "$SENDER_FROM" $SENDER_REFS
+# shellcheck disable=SC2086
+check "self-test: the sender-call check fails a listing with no sender call" \
+    fails refs_only_in "$ST/caller/code.txt" "$SENDER_FROM" $SENDER_REFS
 # shellcheck disable=SC2086
 check "self-test: the stock-setter check passes calls made only in StockCabinCalls" \
     only_passes "$ST/stockok/code.txt" 'UsmSeatCalls;\.eco:' "$STOCK_FROM" $STOCK_REFS
@@ -610,6 +632,9 @@ check "UsmSeatCalls.eco can clear the cached manager" \
 # shellcheck disable=SC2086
 check "CabinCalls.climate/wheel/eco are called only from CheckedCabinSender" \
     refs_only_in "$TMP/dexcode.txt" "$CABIN_FROM" $CABIN_REFS
+# shellcheck disable=SC2086
+check "CheckedCabinSender.climate/eco/wheelPress are called only from PresetRunner" \
+    refs_only_in "$TMP/dexcode.txt" "$SENDER_FROM" $SENDER_REFS
 # shellcheck disable=SC2086
 check "DatcClimateCalls.send and UsmSeatCalls.wheel/eco are called only from StockCabinCalls" \
     refs_only_in "$TMP/dexcode.txt" "$STOCK_FROM" $STOCK_REFS
