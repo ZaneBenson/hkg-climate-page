@@ -11,6 +11,9 @@ FAILS=0
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# fails <command...>: succeeds when the command fails
+fails() { ! "$@"; }
+
 check() {
     _name=$1; shift
     if "$@" > /dev/null 2>&1; then echo "ok   $_name"; else echo "FAIL $_name"; FAILS=$((FAILS + 1)); fi
@@ -23,13 +26,14 @@ check "apk exists" [ -s "$APK" ]
 
 if [ -s "$APK" ]; then
     "$BUILD_TOOLS/aapt" dump badging "$APK" > "$TMP/badging" 2>&1
+    "$BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml > "$TMP/manifest.txt" 2>&1
     unzip -p "$APK" classes.dex > "$TMP/classes.dex" 2> /dev/null
     "$BUILD_TOOLS/dexdump" "$TMP/classes.dex" > "$TMP/dex.txt" 2>&1
     # -d lists the code, which is where references to other classes show up
     "$BUILD_TOOLS/dexdump" -d "$TMP/classes.dex" > "$TMP/dexcode.txt" 2>&1
     unzip -Z1 "$APK" > "$TMP/entries" 2>&1
 fi
-: >> "$TMP/badging"; : >> "$TMP/dex.txt"; : >> "$TMP/dexcode.txt"; : >> "$TMP/entries"
+: >> "$TMP/manifest.txt"; : >> "$TMP/badging"; : >> "$TMP/dex.txt"; : >> "$TMP/dexcode.txt"; : >> "$TMP/entries"
 
 # has_ref <dexdump -d output> <class>: the code refers to the class, e.g. Lcom/hkmc/usm/
 has_ref() { grep -q "$2" "$1"; }
@@ -218,6 +222,37 @@ catch_passes() { grep -q '<any> -> 0x' "$1" && no_typed_catch_in "$1" "$2"; }
 send_flags() { grep -q "$2" "$1" && ! seat_calls_only_in "$1" 'hkgclimate.core.CheckedSeatSender.send:'; }
 # send_none_fails <listing>: the listing has code but no seat call, and seat_calls_only_in fails
 send_none_fails() { grep -q '|\[' "$1" && ! seat_calls_only_in "$1" 'hkgclimate.core.CheckedSeatSender.send:'; }
+# editor_not_exported <aapt xmltree of the manifest>: the PresetEditorActivity element exists, is
+# not exported (no android:exported=true) and has no intent-filter
+editor_not_exported() {
+    awk '
+        function flush() {
+            if (blk != "" && blk ~ /android:name\([^)]*\)="hkgclimate.app.PresetEditorActivity"/) {
+                found = 1
+                if (blk ~ /E: intent-filter/ || blk ~ /android:exported[^\n]*0xffffffff/) bad = 1
+            }
+            blk = ""
+        }
+        /^ *E: / {
+            ind = match($0, /E: /)
+            if (inact && ind <= ai) { flush(); inact = 0 }
+            if ($0 ~ /E: activity /) { flush(); inact = 1; ai = ind }
+        }
+        inact { blk = blk $0 "\n" }
+        END { flush(); exit !(found && !bad) }' "$1"
+}
+# dialog_only_in_settings <dexdump -d output>: every Landroid/app/AlertDialog reference is in the
+# code of a hkgclimate.app.SettingsActivity method (and the listing has at least one)
+dialog_only_in_settings() {
+    awk '
+        /Class descriptor/ { meth = "" }
+        /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m }
+        index($0, "Landroid/app/AlertDialog") && index($0, "|") {
+            n++; if (index(meth, "hkgclimate.app.SettingsActivity.") != 1) { print; bad++ }
+        }
+        END { exit !(n > 0 && bad == 0) }' "$1"
+}
+scratch_dex dialog Other 'package hkgclimate.app; public class Other { void go(android.content.Context c) { new android.app.AlertDialog.Builder(c).setTitle("x").show(); } }'
 check "self-test: the reference check finds a scratch com.hkmc.usm call" has_ref "$ST/caller/code.txt" 'Lcom/hkmc/usm/'
 check "self-test: usm check flags a com.hkmc.usm call from another class" \
     usm_flags "$ST/caller/code.txt" 'Lcom/hkmc/usm/Seat;\.send'
@@ -253,11 +288,14 @@ check "self-test: the seat-call check fails a listing with no seat call" \
     send_none_fails "$ST/caller/code.txt"
 
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
-check "versionName is 1.0.0" grep -q "versionName='1.0.0'" "$TMP/badging"
-check "versionCode is 3" grep -q "versionCode='3'" "$TMP/badging"
+check "versionName is 2.0.0" grep -q "versionName='2.0.0'" "$TMP/badging"
+check "versionCode is 4" grep -q "versionCode='4'" "$TMP/badging"
 # the approval flow is gone: no commander class, no dialog, no preference key
 check "dex has no TestModeCommander class" sh -c "! grep -q 'Lhkgclimate/app/TestModeCommander;' $TMP/dex.txt"
-check "code has no AlertDialog reference (settings screen)" sh -c "! grep -q 'Landroid/app/AlertDialog' $TMP/dexcode.txt"
+# the one dialog is the settings screen's "Delete preset?" confirm; nothing else shows one
+check "AlertDialog is referenced only by SettingsActivity (the delete confirm)" dialog_only_in_settings "$TMP/dexcode.txt"
+check "self-test: dialog_only_in_settings flags a reference from another class" \
+    fails dialog_only_in_settings "$ST/dialog/code.txt"
 check "dex strings have no seat_command_approved key" dex_lacks_string "$TMP/classes.dex" seat_command_approved
 check "self-test: dex_has_string finds a string the dex holds" dex_has_string "$TMP/classes.dex" switch_temp_f
 check "sdkVersion is 19" grep -q "^sdkVersion:'19'" "$TMP/badging"
@@ -324,6 +362,31 @@ check "ClimateService builds the CheckedSeatSender" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/CheckedSeatSender;\.<init>'
 check "ClimateService builds the UsmSeatCalls" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/app/UsmSeatCalls;\.<init>'
+
+# presets (plan 5): stored in the preferences, loaded into the core, served to the page
+check "the editor activity is in the manifest, not exported, with no intent filter" \
+    editor_not_exported "$TMP/manifest.txt"
+sed 's/(type 0x12)0x0$/(type 0x12)0xffffffff/' "$TMP/manifest.txt" > "$TMP/manifest-bad.txt"
+check "self-test: editor_not_exported fails on an exported editor" fails editor_not_exported "$TMP/manifest-bad.txt"
+check "self-test: editor_not_exported fails when there is no editor" fails editor_not_exported "$TMP/badging"
+check "dex has PresetEditorActivity" grep -q "Lhkgclimate/app/PresetEditorActivity;" "$TMP/dex.txt"
+check "PageLinkBinder serves a preset tap (ClimateCore.onPresetTap)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'Lhkgclimate/core/ClimateCore;\.onPresetTap'
+check "PageLinkBinder.presetTap runs the send bookkeeping (sent) and so does the seat tap" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'PageLinkBinder;\.sent:'
+check "PageLinkBinder.tap runs the same send bookkeeping" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.tap:' 'PageLinkBinder;\.sent:'
+check "PageLinkBinder.sent runs the afterSend callback" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.sent:' 'iget-object.*PageLinkBinder;\.afterSend'
+check "ClimateService loads the presets into the core" \
+    has_ref "$TMP/dexcode.txt" 'Lhkgclimate/core/ClimateCore;\.setPresets'
+check "PageStates puts the preset keys" dex_has_string "$TMP/classes.dex" presetEnabled
+check "the editor checks a preset with Preset.check before storing it" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.check'
+check "the settings screen stores presets through PresetList" \
+    has_ref "$TMP/dexcode.txt" 'Lhkgclimate/core/PresetList;\.moveUp'
+check "preset sends go through the core and CheckedSeatSender only (no new send path)" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'UsmSeatCalls'
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
 echo "all checks passed"

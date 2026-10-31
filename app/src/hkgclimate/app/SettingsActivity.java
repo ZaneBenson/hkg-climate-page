@@ -1,8 +1,10 @@
 package hkgclimate.app;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Binder;
@@ -20,9 +22,12 @@ import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import hkgclimate.core.Preset;
+import hkgclimate.core.PresetList;
 import hkgclimate.core.SeatValues;
 import hkgclimate.core.SwitchTemp;
 import hkgclimate.link.PageLink;
+import java.util.List;
 
 /**
  * The settings screen. Views are built in code. It learns the car's values the way the page does:
@@ -35,6 +40,7 @@ public class SettingsActivity extends Activity {
     private static final int DEFAULT_RAW_UNIT = 2;
     private static final String MINUS = "−";
     private static final String DEGREE = "°";
+    private static final String DOT = " · ";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -50,6 +56,7 @@ public class SettingsActivity extends Activity {
     private Button plus;
     private TextView statusText;
     private TextView seatStatus;
+    private LinearLayout presetBox;
 
     // ours alone: the service calls it with every state; main-thread work is posted
     private final Binder callback = new Binder() {
@@ -90,6 +97,13 @@ public class SettingsActivity extends Activity {
         prefs = new Prefs(this);
         setContentView(buildViews());
         refresh();
+        refreshPresets();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshPresets(); // the editor may have saved while we were away
     }
 
     @Override
@@ -187,7 +201,15 @@ public class SettingsActivity extends Activity {
         enabled.setPadding(0, dp(16), 0, dp(16));
         root.addView(enabled);
 
+        TextView presetsTitle = text("Presets", 24);
+        presetsTitle.setPadding(0, dp(16), 0, dp(8));
+        root.addView(presetsTitle);
+        presetBox = new LinearLayout(this);
+        presetBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(presetBox);
+
         statusText = text("", 18);
+        statusText.setPadding(0, dp(16), 0, 0);
         root.addView(statusText);
 
         seatStatus = text("", 18);
@@ -232,6 +254,117 @@ public class SettingsActivity extends Activity {
         } catch (Throwable t) {
             Log.w(TAG, "settings refresh failed", t);
         }
+    }
+
+    /** Rebuilds the preset list from the preferences: the summary line and the buttons for each preset. */
+    private void refreshPresets() {
+        try {
+            presetBox.removeAllViews();
+            final List<Preset> list = prefs.getPresets();
+            if (list.isEmpty()) presetBox.addView(text("No presets yet", 18));
+            for (int i = 0; i < list.size(); i++) {
+                final int at = i;
+                final Preset p = list.get(i);
+                TextView line = text(summary(p), 20);
+                line.setPadding(0, dp(12), 0, 0);
+                presetBox.addView(line);
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.addView(smallButton("Edit", true, new View.OnClickListener() {
+                    @Override public void onClick(View v) { edit(at); }
+                }));
+                row.addView(smallButton("Delete", true, new View.OnClickListener() {
+                    @Override public void onClick(View v) { confirmDelete(at, p.name); }
+                }));
+                row.addView(smallButton("Up", at > 0, new View.OnClickListener() {
+                    @Override public void onClick(View v) { move(at, -1); }
+                }));
+                row.addView(smallButton("Down", at < list.size() - 1, new View.OnClickListener() {
+                    @Override public void onClick(View v) { move(at, 1); }
+                }));
+                presetBox.addView(row);
+            }
+            Button add = smallButton("Add preset", list.size() < PresetList.MAX, new View.OnClickListener() {
+                @Override public void onClick(View v) { edit(-1); }
+            });
+            presetBox.addView(add);
+            if (list.size() >= PresetList.MAX) {
+                presetBox.addView(text("At most " + PresetList.MAX + " presets", 16));
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "settings preset list failed", t);
+        }
+    }
+
+    private Button smallButton(String label, boolean enabled, View.OnClickListener l) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setEnabled(enabled);
+        b.setOnClickListener(l);
+        return b;
+    }
+
+    /** "Cold: Driver heat high · Passenger off"; a seat left as is is not named. */
+    static String summary(Preset p) {
+        StringBuilder sb = new StringBuilder(p.name).append(':');
+        boolean first = true;
+        for (int seat = 0; seat < 2; seat++) {
+            int v = seat == 0 ? p.driver : p.passenger;
+            if (v == Preset.LEAVE) continue;
+            String w = SeatValues.words(v);
+            sb.append(first ? " " : DOT).append(seat == 0 ? "Driver " : "Passenger ")
+                    .append(w == null ? String.valueOf(v) : w);
+            first = false;
+        }
+        return sb.toString();
+    }
+
+    /** Opens the editor for the preset at index (-1 for a new one), with the seats' options from the last state. */
+    private void edit(int index) {
+        try {
+            Intent in = new Intent(this, PresetEditorActivity.class);
+            in.putExtra(PresetEditorActivity.EXTRA_INDEX, index);
+            if (debug != null) {
+                in.putExtra(PresetEditorActivity.EXTRA_DRV_OPTION, debug.getInt(PageStates.D_DRV_OPTION, -1));
+                in.putExtra(PresetEditorActivity.EXTRA_AST_OPTION, debug.getInt(PageStates.D_AST_OPTION, -1));
+            }
+            startActivity(in);
+        } catch (Throwable t) {
+            Log.w(TAG, "settings could not open the preset editor", t);
+        }
+    }
+
+    private void confirmDelete(final int index, String name) {
+        try {
+            new AlertDialog.Builder(this)
+                    .setMessage("Delete preset " + name + "?")
+                    .setPositiveButton("Delete", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface d, int which) { delete(index); }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        } catch (Throwable t) {
+            Log.w(TAG, "settings could not show the delete question", t);
+        }
+    }
+
+    private void delete(int index) {
+        try {
+            prefs.setPresets(PresetList.remove(prefs.getPresets(), index));
+        } catch (Throwable t) {
+            Log.w(TAG, "deleting the preset failed", t);
+        }
+        refreshPresets();
+    }
+
+    private void move(int index, int delta) {
+        try {
+            List<Preset> list = prefs.getPresets();
+            prefs.setPresets(delta < 0 ? PresetList.moveUp(list, index) : PresetList.moveDown(list, index));
+        } catch (Throwable t) {
+            Log.w(TAG, "moving the preset failed", t);
+        }
+        refreshPresets();
     }
 
     private String statusLines() {

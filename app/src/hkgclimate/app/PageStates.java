@@ -39,6 +39,8 @@ final class PageStates {
         b.putIntArray(PageLink.K_SEAT_KIND, s.seatKind.clone());
         b.putBooleanArray(PageLink.K_SEAT_ENABLED, s.seatEnabled.clone());
         b.putIntArray(PageLink.K_SEAT_TAP_KIND, s.seatTapKind.clone());
+        b.putStringArray(PageLink.K_PRESET_NAMES, s.presetNames.clone());
+        b.putBooleanArray(PageLink.K_PRESET_ENABLED, s.presetEnabled.clone());
         if (debug != null) b.putBundle(PageLink.K_DEBUG, debug);
         return b;
     }

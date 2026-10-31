@@ -85,13 +85,16 @@ public final class ClimateCore {
      * Applies the preset in slot index: for the driver, then the passenger, one command for each
      * seat that has a target, is in a state we know, is not already at the target, and, for a
      * cool target, has the heat and cool option. Returns how many commands were sent; 0 for a
-     * request id seen before, a bad or empty slot, or seats that are not ready.
+     * request id seen before, a bad or empty slot, a preset that fails Preset.check, or seats
+     * that are not ready.
      */
     public int onPresetTap(int index, long requestId) {
         if (!gate.accept(requestId)) return 0;
         if (!ready) return 0;
         if (index < 0 || index >= presets.size()) return 0;
         Preset p = presets.get(index);
+        // a preset that does not check (built by hand, not through the editor) sends nothing at all
+        if (Preset.check(p.name, p.driver, p.passenger) != null) return 0;
         int sent = 0;
         for (Seat s : Seat.values()) {
             int i = s.ordinal();

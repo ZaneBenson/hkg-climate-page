@@ -48,6 +48,9 @@ public class ClimateService extends Service {
                     if (core != null && (key == null || Prefs.KEY_SWITCH_TEMP_F.equals(key))) {
                         core.setSwitchTempF(prefs.getSwitchTempF());
                     }
+                    if (core != null && (key == null || Prefs.KEY_PRESETS.equals(key))) {
+                        core.setPresets(prefs.getPresets());
+                    }
                     if (keeper != null && (key == null || Prefs.KEY_PAGE_ENABLED.equals(key))) {
                         try {
                             keeper.setEnabled(prefs.isPageEnabled());
@@ -80,10 +83,10 @@ public class ClimateService extends Service {
                 @Override
                 public void set(Seat seat, int value) {
                     sender.set(seat, value);
-                    afterSend();
                 }
             };
             core = new ClimateCore(send, prefs.getSwitchTempF());
+            core.setPresets(prefs.getPresets());
             car = new CarLink(this, core, watch);
             binder = new PageLinkBinder(core, new PageLinkBinder.DebugSource() {
                 @Override public Bundle debug() {
@@ -93,6 +96,8 @@ public class ClimateService extends Service {
                     d.putString(PageStates.D_LAST_SEND, lastSend);
                     return d;
                 }
+            }, new Runnable() {
+                @Override public void run() { afterSend(); }
             });
             car.setOnDebugChange(new Runnable() {
                 @Override public void run() { binder.onDebugChanged(); }
@@ -126,7 +131,7 @@ public class ClimateService extends Service {
         return START_STICKY;
     }
 
-    /** Main thread, after each tap the sender handled: record its result and watch a send. */
+    /** Main thread, once after each tap that sent a command (PageLinkBinder calls it): record its result and watch a send. */
     private void afterSend() {
         try {
             String result = sender.lastResult();

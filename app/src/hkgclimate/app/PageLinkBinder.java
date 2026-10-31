@@ -48,6 +48,7 @@ final class PageLinkBinder extends Binder {
 
     private final ClimateCore core;
     private final DebugSource debugSource;
+    private final Runnable afterSend;
     private final Handler handler = new Handler(Looper.getMainLooper());
     // main thread only
     private final ArrayList<Subscriber> subscribers = new ArrayList<Subscriber>();
@@ -55,9 +56,14 @@ final class PageLinkBinder extends Binder {
     // binder threads; guarded by itself
     private final Set<Integer> refusedUids = new HashSet<Integer>();
 
-    PageLinkBinder(ClimateCore core, DebugSource debugSource) {
+    /**
+     * afterSend runs on the main thread once for each tap that sent at least one command (the last-send
+     * line and the watch check); it may be null.
+     */
+    PageLinkBinder(ClimateCore core, DebugSource debugSource, Runnable afterSend) {
         this.core = core;
         this.debugSource = debugSource;
+        this.afterSend = afterSend;
         attachInterface(null, PageLink.DESCRIPTOR);
         core.setListener(new Runnable() {
             @Override public void run() { broadcast(); }
@@ -115,6 +121,16 @@ final class PageLinkBinder extends Binder {
                     done(reply, flags);
                     return true;
                 }
+                case PageLink.TX_PRESET: {
+                    data.enforceInterface(PageLink.DESCRIPTOR);
+                    final int index = data.readInt();
+                    final long id = data.readLong();
+                    handler.post(new Runnable() {
+                        @Override public void run() { presetTap(index, id); }
+                    });
+                    done(reply, flags);
+                    return true;
+                }
                 default:
                     return super.onTransact(code, data, reply, flags);
             }
@@ -141,10 +157,25 @@ final class PageLinkBinder extends Binder {
 
     private void tap(Seat seat, long id) {
         try {
-            core.onTap(seat, id);
+            if (core.onTap(seat, id)) sent();
         } catch (Throwable t) {
             Log.w(TAG, "tap failed", t);
         }
+    }
+
+    /** Main thread: one preset tap. The core ignores a bad slot or an id it has seen. */
+    private void presetTap(int index, long id) {
+        try {
+            if (core.onPresetTap(index, id) > 0) sent();
+        } catch (Throwable t) {
+            Log.w(TAG, "preset tap failed", t);
+        }
+    }
+
+    /** Main thread: a tap sent a command; one round of bookkeeping however many it sent. */
+    private void sent() {
+        Runnable r = afterSend;
+        if (r != null) r.run();
     }
 
     private void subscribe(IBinder cb) {

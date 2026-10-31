@@ -135,6 +135,19 @@ public class ClimateCorePresetTest {
     }
 
     @Test
+    public void uncheckedPresetsSendNothing() {
+        // seats where a passenger value of 2 (or a driver value of 1) would otherwise be sent
+        ready(8, 8);
+        core.setPresets(Arrays.asList(new Preset("x", 9, 2), new Preset("y", 1, 0),
+                new Preset("z", 8, 9), new Preset("", 8, 2)));
+        assertEquals(0, core.onPresetTap(0, 1));
+        assertEquals(0, core.onPresetTap(1, 2));
+        assertEquals(0, core.onPresetTap(2, 3));
+        assertEquals(0, core.onPresetTap(3, 4));
+        assertTrue(rec.sent.isEmpty());
+    }
+
+    @Test
     public void repeatedRequestIdSendsOnce() {
         ready(2, 2);
         core.setPresets(one(8, 8));
