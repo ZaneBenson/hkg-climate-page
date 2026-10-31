@@ -13,6 +13,9 @@ import org.junit.Test;
 public class PresetListTest {
     private static Preset p(String n) { return new Preset(n, 8, 5); }
 
+    /** The nine items after the two seats, all left as is. */
+    private static final String NONE = "\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1";
+
     private static List<Preset> list(String... names) {
         List<Preset> l = new ArrayList<Preset>();
         for (String n : names) l.add(p(n));
@@ -64,9 +67,9 @@ public class PresetListTest {
     public void codecRoundTrips() {
         List<Preset> in = Arrays.asList(new Preset("Cold", 8, 8), new Preset("Warm", 5, Preset.LEAVE),
                 new Preset("Off", 2, 2));
-        assertEquals("Cold\t8\t8\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n"
-                + "Warm\t5\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n"
-                + "Off\t2\t2\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n", PresetList.encode(in));
+        assertEquals("Cold\t8\t8" + NONE + "\n"
+                + "Warm\t5\t-1" + NONE + "\n"
+                + "Off\t2\t2" + NONE + "\n", PresetList.encode(in));
         assertEquals(in, PresetList.decode(PresetList.encode(in)));
     }
 
@@ -104,30 +107,37 @@ public class PresetListTest {
     }
 
     @Test
-    public void decodeKeepsAtMostFour() {
+    public void limitIsSix() {
+        assertEquals(6, PresetList.MAX);
+    }
+
+    @Test
+    public void decodeKeepsAtMostSix() {
         StringBuilder b = new StringBuilder();
-        for (int i = 0; i < 6; i++) b.append("p").append(i).append("\t8\t8\n");
+        for (int i = 0; i < 8; i++) b.append("p").append(i).append("\t8\t8\n");
         List<Preset> out = PresetList.decode(b.toString());
-        assertEquals(4, out.size());
-        assertEquals("p0,p1,p2,p3,", names(out));
+        assertEquals(6, out.size());
+        assertEquals("p0,p1,p2,p3,p4,p5,", names(out));
     }
 
     @Test
     public void encodeDropsInvalidPresetsAndExtras() {
         List<Preset> in = Arrays.asList(new Preset("ok", 8, 8), new Preset("a\tb", 8, 8),
                 new Preset("", 8, 8), new Preset("none", -1, -1), new Preset("c", 2, 2));
-        assertEquals("ok\t8\t8\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n"
-                + "c\t2\t2\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n", PresetList.encode(in));
-        assertEquals(4, PresetList.decode(PresetList.encode(list("a", "b", "c", "d", "e"))).size());
+        assertEquals("ok\t8\t8" + NONE + "\nc\t2\t2" + NONE + "\n", PresetList.encode(in));
+        assertEquals(6, PresetList.decode(PresetList.encode(
+                list("a", "b", "c", "d", "e", "f", "g"))).size());
+        assertEquals("a,b,c,d,e,f,", names(PresetList.decode(PresetList.encode(
+                list("a", "b", "c", "d", "e", "f", "g")))));
     }
 
     @Test
     public void addAppendsUntilFull() {
         List<Preset> l = new ArrayList<Preset>();
-        for (String n : new String[] {"a", "b", "c", "d"}) l = PresetList.add(l, p(n));
-        assertEquals("a,b,c,d,", names(l));
-        List<Preset> full = PresetList.add(l, p("e"));
-        assertEquals("a,b,c,d,", names(full));
+        for (String n : new String[] {"a", "b", "c", "d", "e", "f"}) l = PresetList.add(l, p(n));
+        assertEquals("a,b,c,d,e,f,", names(l));
+        List<Preset> full = PresetList.add(l, p("g"));
+        assertEquals("a,b,c,d,e,f,", names(full));
     }
 
     @Test
@@ -162,7 +172,6 @@ public class PresetListTest {
         assertEquals("a,b,c,", names(PresetList.moveUp(in, -1)));
     }
 
-    private static final String NONE = "\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1";
 
     @Test
     public void oldThreeFieldLineLoadsWithEveryNewItemLeftAndSavesInTheNewFormat() {
@@ -171,7 +180,8 @@ public class PresetListTest {
         Preset cold = loaded.get(0);
         assertEquals(8, cold.driver);
         assertEquals(5, cold.passenger);
-        for (int v : new int[] {cold.wheel, cold.eco, cold.climate, cold.tempF, cold.fan, cold.ac,
+        for (int v : new int[] {cold.wheel, cold.eco, cold.climate, cold.driverTempF,
+                cold.passengerTempF, cold.fan, cold.ac,
                 cold.airflow, cold.sync}) {
             assertEquals(Preset.LEAVE, v);
         }
@@ -181,12 +191,18 @@ public class PresetListTest {
     }
 
     @Test
-    public void elevenFieldLineRoundTrips() {
-        Preset full = new Preset("Cold", 8, 8, 1, 0, Preset.CLIMATE_MANUAL, 70, 3, 1, 2, 1);
-        String line = "Cold\t8\t8\t1\t0\t3\t70\t3\t1\t2\t1\n";
+    public void twelveFieldLineRoundTrips() {
+        Preset full = new Preset("Cold", 8, 8, 1, 0, Preset.CLIMATE_MANUAL, 70, 72, 3, 1, 2, 0);
+        String line = "Cold\t8\t8\t1\t0\t3\t70\t72\t3\t1\t2\t0\n";
         assertEquals(line, PresetList.encode(Arrays.asList(full)));
         assertEquals(Arrays.asList(full), PresetList.decode(line));
-        Preset climateOnly = new Preset("Auto", -1, -1, -1, -1, Preset.CLIMATE_AUTO, 64, -1, -1, -1, 1);
+        assertEquals(70, PresetList.decode(line).get(0).driverTempF);
+        assertEquals(72, PresetList.decode(line).get(0).passengerTempF);
+        // sync on is stored with no passenger temperature
+        Preset synced = new Preset("Cold", 8, 8, 1, 0, Preset.CLIMATE_MANUAL, 70, 72, 3, 1, 2, 1);
+        assertEquals("Cold\t8\t8\t1\t0\t3\t70\t-1\t3\t1\t2\t1\n",
+                PresetList.encode(Arrays.asList(synced)));
+        Preset climateOnly = new Preset("Auto", -1, -1, -1, -1, Preset.CLIMATE_AUTO, 64, 66, -1, -1, -1, 0);
         assertEquals(Arrays.asList(climateOnly), PresetList.decode(PresetList.encode(Arrays.asList(climateOnly))));
     }
 
@@ -209,8 +225,72 @@ public class PresetListTest {
     @Test
     public void autoAndOffLinesDropTheirGreyedItemsOnLoad() {
         Preset auto = PresetList.decode("a\t-1\t-1\t-1\t-1\t2\t70\t5\t1\t3\t1\n").get(0);
-        assertEquals(new Preset("a", -1, -1, -1, -1, Preset.CLIMATE_AUTO, 70, -1, -1, -1, 1), auto);
+        assertEquals(new Preset("a", -1, -1, -1, -1, Preset.CLIMATE_AUTO, 70, 70, -1, -1, -1, 1), auto);
         Preset off = PresetList.decode("o\t-1\t-1\t1\t-1\t1\t70\t5\t1\t3\t1\n").get(0);
-        assertEquals(new Preset("o", -1, -1, 1, -1, Preset.CLIMATE_OFF, -1, -1, -1, -1, -1), off);
+        assertEquals(new Preset("o", -1, -1, 1, -1, Preset.CLIMATE_OFF, -1, -1, -1, -1, -1, -1), off);
+    }
+
+    // Review focus 3: old saved presets load without changing any seat or temperature.
+
+    @Test
+    public void elevenFieldLineGivesItsTemperatureToBothSides() {
+        Preset p = PresetList.decode("Cold\t8\t5\t1\t0\t3\t70\t3\t1\t2\t0\n").get(0);
+        assertEquals(8, p.driver);
+        assertEquals(5, p.passenger);
+        assertEquals(1, p.wheel);
+        assertEquals(0, p.eco);
+        assertEquals(Preset.CLIMATE_MANUAL, p.climate);
+        assertEquals(70, p.driverTempF);
+        assertEquals(70, p.passengerTempF);
+        assertEquals(3, p.fan);
+        assertEquals(1, p.ac);
+        assertEquals(2, p.airflow);
+        assertEquals(0, p.sync);
+    }
+
+    @Test
+    public void elevenFieldLineWithSyncLeftKeepsBothSides() {
+        Preset p = PresetList.decode("T\t-1\t-1\t-1\t-1\t-1\t66\t-1\t-1\t-1\t-1\n").get(0);
+        assertEquals(66, p.driverTempF);
+        assertEquals(66, p.passengerTempF);
+        assertEquals(Preset.LEAVE, p.sync);
+    }
+
+    @Test
+    public void elevenFieldLineWithSyncOnLoadsOnlyTheDriverTemperature() {
+        Preset p = PresetList.decode("Cold\t8\t5\t-1\t-1\t2\t70\t-1\t-1\t-1\t1\n").get(0);
+        assertEquals(70, p.driverTempF);
+        assertEquals(Preset.LEAVE, p.passengerTempF);
+        assertEquals(1, p.sync);
+        assertEquals(8, p.driver);
+        assertEquals(5, p.passenger);
+        // and it saves in the new format with the passenger temperature left
+        assertEquals("Cold\t8\t5\t-1\t-1\t2\t70\t-1\t-1\t-1\t-1\t1\n",
+                PresetList.encode(Arrays.asList(p)));
+    }
+
+    @Test
+    public void elevenFieldLineWithoutATemperatureLeavesBothSides() {
+        Preset p = PresetList.decode("A\t8\t5\t1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n").get(0);
+        assertEquals(Preset.LEAVE, p.driverTempF);
+        assertEquals(Preset.LEAVE, p.passengerTempF);
+        assertEquals(1, p.wheel);
+    }
+
+    @Test
+    public void oldLinesLoadAlongsideNewOnesInOneText() {
+        List<Preset> out = PresetList.decode("a\t8\t5\n"
+                + "b\t-1\t-1\t-1\t-1\t-1\t70\t-1\t-1\t-1\t-1\n"
+                + "c\t-1\t-1\t-1\t-1\t-1\t68\t72\t-1\t-1\t-1\t-1\n");
+        assertEquals("a,b,c,", names(out));
+        assertEquals(70, out.get(1).passengerTempF);
+        assertEquals(68, out.get(2).driverTempF);
+        assertEquals(72, out.get(2).passengerTempF);
+    }
+
+    @Test
+    public void twelveFieldLineThatDoesNotCheckIsSkipped() {
+        assertTrue(PresetList.decode("x\t8\t5\t-1\t-1\t-1\t70\t83\t-1\t-1\t-1\t-1\n").isEmpty());
+        assertTrue(PresetList.decode("x\t8\t5\t-1\t-1\t-1\t61\t70\t-1\t-1\t-1\t-1\n").isEmpty());
     }
 }

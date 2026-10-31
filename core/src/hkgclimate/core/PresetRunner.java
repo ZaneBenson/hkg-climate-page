@@ -11,6 +11,10 @@ import java.util.List;
  * POLL_MS until the item's value changes or STEP_WAIT_MS passes. A stepped item (fan,
  * temperature) decides its next press from the new value, up to a cap.
  *
+ * The driver temperature steps to driverTempF and then the passenger's to passengerTempF (see
+ * decidePassenger for when the passenger is skipped). A preset with Sync on has no passenger
+ * temperature: the passenger follows the driver.
+ *
  * Two commands are never closer than COMMAND_GAP_MS (the car silently ignored a temperature
  * press sent 100 ms after the previous one; the stock screen's presses are about 450 ms apart):
  * when a command is due sooner, the runner waits out the gap, then reads the car again and
@@ -52,14 +56,12 @@ public final class PresetRunner {
 
     // what decide() found
     private static final int DONE = 0;
-    /** Nothing to do and nothing to name (the passenger follows sync, is not shown, ...). */
+    /** Nothing to do and nothing to name (the passenger is not shown, driver-only is on, ...). */
     private static final int QUIET = 1;
     /** Not done; the reason is in why. */
     private static final int NOT_DONE = 2;
     /** Send the command in sendFlag and sendValue. */
     private static final int SEND = 3;
-    /** Send nothing, but wait for the value to change (the passenger following sync). */
-    private static final int WAIT = 4;
 
     private static final int WHEEL_FLAG = -1;
     private static final int ECO_FLAG = -2;
@@ -77,8 +79,6 @@ public final class PresetRunner {
     private int[] items;
     private int index;
     private int presses;
-    private boolean waited;
-    private boolean sentThisWait;
     /** Retries used by the current step, and whether the call now deciding is one. */
     private int retries;
     private boolean retrying;
@@ -174,10 +174,8 @@ public final class PresetRunner {
             if (p.fan != Preset.LEAVE) all[n++] = FAN;
             if (p.climate == Preset.CLIMATE_MANUAL) all[n++] = MANUAL;
             if (p.sync != Preset.LEAVE) all[n++] = SYNC;
-            if (p.tempF != Preset.LEAVE) {
-                all[n++] = DRIVER_TEMP;
-                all[n++] = PASSENGER_TEMP;
-            }
+            if (p.driverTempF != Preset.LEAVE) all[n++] = DRIVER_TEMP;
+            if (p.passengerTempF != Preset.LEAVE) all[n++] = PASSENGER_TEMP;
         }
         int[] out = new int[n];
         System.arraycopy(all, 0, out, 0, n);
@@ -190,7 +188,6 @@ public final class PresetRunner {
             presses = 0;
             retries = 0;
             retrying = false;
-            waited = false;
             try {
                 if (decideAndAct()) return; // waiting for the car
             } catch (Throwable t) {
@@ -219,37 +216,27 @@ public final class PresetRunner {
             notDone.add(label(item) + " (" + why + ")");
             return false;
         }
-        if (d == WAIT) {
-            if (waited) {
-                notDone.add(label(item) + " (did not follow sync)");
-                return false;
-            }
-            waited = true;
-            sentThisWait = false;
-        } else {
-            int cap = cap(item);
-            if (presses >= cap) {
-                notDone.add(label(item) + " ("
-                        + (cap == 1 ? "not reached" : "stopped after " + cap + " presses") + ")");
-                return false;
-            }
-            if (quietMs < COMMAND_GAP_MS) {
-                // too soon after the last command: wait out the gap, then read and decide again
-                gapWaitMs = COMMAND_GAP_MS - quietMs;
-                scheduleGap();
-                return true;
-            }
-            if (!send()) {
-                notDone.add(label(item) + " (not sent)");
-                return false;
-            }
-            presses++;
-            if (retrying) retries++;
-            retrying = false;
-            sentThisWait = true;
-            // the wheel's release is a command too, WHEEL_RELEASE_MS after the press
-            quietMs = item == WHEEL ? -CheckedCabinSender.WHEEL_RELEASE_MS : 0;
+        int cap = cap(item);
+        if (presses >= cap) {
+            notDone.add(label(item) + " ("
+                    + (cap == 1 ? "not reached" : "stopped after " + cap + " presses") + ")");
+            return false;
         }
+        if (quietMs < COMMAND_GAP_MS) {
+            // too soon after the last command: wait out the gap, then read and decide again
+            gapWaitMs = COMMAND_GAP_MS - quietMs;
+            scheduleGap();
+            return true;
+        }
+        if (!send()) {
+            notDone.add(label(item) + " (not sent)");
+            return false;
+        }
+        presses++;
+        if (retrying) retries++;
+        retrying = false;
+        // the wheel's release is a command too, WHEEL_RELEASE_MS after the press
+        quietMs = item == WHEEL ? -CheckedCabinSender.WHEEL_RELEASE_MS : 0;
         before = key(item, s);
         polls = 0;
         schedulePoll();
@@ -308,8 +295,8 @@ public final class PresetRunner {
                 if (d == DONE || (d == QUIET && presses > 0)) {
                     done.add(label(item) + stepsText(item));
                 } else if (d != QUIET) {
-                    String reason = !sentThisWait ? "did not follow sync"
-                            : retries > 0 ? NO_CHANGE_RETRIED + (MAX_RETRIES + 1) + " presses" : NO_CHANGE;
+                    String reason = retries > 0
+                            ? NO_CHANGE_RETRIED + (MAX_RETRIES + 1) + " presses" : NO_CHANGE;
                     notDone.add(label(item) + " (" + reason + ")");
                 }
             } else {
@@ -330,7 +317,7 @@ public final class PresetRunner {
      */
     private boolean canRetry(int item) {
         return (item == FAN || item == DRIVER_TEMP || item == PASSENGER_TEMP)
-                && sentThisWait && !pressForced && retries < MAX_RETRIES;
+                && !pressForced && retries < MAX_RETRIES;
     }
 
     /** Ends the run at the current item after an unexpected failure (for example the scheduler). */
@@ -437,7 +424,8 @@ public final class PresetRunner {
                 return send(CheckedCabinSender.FLAG_SYNC, p.sync == 1 ? 2 : 1);
             case DRIVER_TEMP:
                 if (!tempKnown(s) || !shown(s.driverTemp)) return unknown();
-                return step(CheckedCabinSender.FLAG_DRIVER_TEMP, s.driverTemp, s.unit);
+                return step(CheckedCabinSender.FLAG_DRIVER_TEMP, s.driverTemp, s.unit,
+                        preset.driverTempF);
             case PASSENGER_TEMP:
                 return decidePassenger(s);
             default:
@@ -462,23 +450,42 @@ public final class PresetRunner {
     }
 
     /**
-     * After the driver side: nothing when the passenger is at the target, not shown, or driver-only
-     * is on; a wait (no press) while sync is on, since a passenger press would turn sync off;
-     * otherwise steps. When the driver side could not be read, it was named there already.
+     * The passenger side, after the driver side. Nothing when it is at its target (it may have
+     * followed the driver on a synced car), is not shown, or driver-only is on. When the car is
+     * synced (the preset's Sync is "leave as is" or it did not take) and the target is not the
+     * driver's, it is skipped and named "sync on": a passenger press would turn sync off without
+     * the preset asking. Otherwise steps. A driver side that could not be read was named there already.
      */
     private int decidePassenger(CabinState s) {
-        if (!tempKnown(s) || !shown(s.driverTemp) || !shown(s.passengerTemp)) return QUIET;
-        if (stepsOf(s.passengerTemp, s.unit) == targetSteps(s.unit)) return presses > 0 ? DONE : QUIET;
-        if (s.sync == 1) return WAIT;
+        boolean driverNamed = preset.driverTempF != Preset.LEAVE;
+        if (!tempKnown(s)) return driverNamed ? QUIET : unknown();
+        if (driverNamed && !shown(s.driverTemp)) return QUIET;
+        if (!shown(s.passengerTemp)) {
+            if (driverNamed || s.driverOnly == 1) return QUIET;
+            return unknown();
+        }
+        if (stepsOf(s.passengerTemp, s.unit) == targetSteps(s.unit, preset.passengerTempF)) {
+            return presses > 0 ? DONE : QUIET;
+        }
+        if (s.sync == 1) {
+            // the passenger follows the driver, so a target equal to the driver's is met (the
+            // passenger's own reading may lag); any other target would need sync turned off
+            if (shown(s.driverTemp)
+                    && stepsOf(s.driverTemp, s.unit) == targetSteps(s.unit, preset.passengerTempF)) {
+                return QUIET;
+            }
+            return notDone("sync on");
+        }
         if (s.sync != 0) return unknown();
         if (s.driverOnly == 1) return QUIET;
         if (s.driverOnly != 0) return unknown();
-        return step(CheckedCabinSender.FLAG_PASSENGER_TEMP, s.passengerTemp, s.unit);
+        return step(CheckedCabinSender.FLAG_PASSENGER_TEMP, s.passengerTemp, s.unit,
+                preset.passengerTempF);
     }
 
     /** One press towards the target, or DONE when the temperature is there. */
-    private int step(int flag, float now, int unit) {
-        int diff = targetSteps(unit) - stepsOf(now, unit);
+    private int step(int flag, float now, int unit, int tempF) {
+        int diff = targetSteps(unit, tempF) - stepsOf(now, unit);
         if (diff == 0) return DONE;
         return send(flag, diff > 0 ? CheckedCabinSender.UP : CheckedCabinSender.DOWN);
     }
@@ -487,12 +494,12 @@ public final class PresetRunner {
      * The target in steps of the display unit (1 °F, or 0.5 °C as twice the Celsius value),
      * clamped to the stock range 62..82 °F or 17.0..27.0 °C.
      */
-    private int targetSteps(int unit) {
+    private static int targetSteps(int unit, int tempF) {
         if (unit == CabinState.UNIT_CELSIUS) {
-            int half = (int) Math.round(PresetChoices.celsiusHalf(preset.tempF) * 2);
+            int half = (int) Math.round(PresetChoices.celsiusHalf(tempF) * 2);
             return Math.max(34, Math.min(54, half));
         }
-        return Math.max(Preset.TEMP_MIN_F, Math.min(Preset.TEMP_MAX_F, preset.tempF));
+        return Math.max(Preset.TEMP_MIN_F, Math.min(Preset.TEMP_MAX_F, tempF));
     }
 
     private static int stepsOf(float t, int unit) {
@@ -562,16 +569,16 @@ public final class PresetRunner {
             case FAN: return "fan " + p.fan;
             case MANUAL: return "manual";
             case SYNC: return "sync " + onOffWords(p.sync);
-            case DRIVER_TEMP: return temperatureWords();
-            case PASSENGER_TEMP: return "passenger " + temperatureWords();
+            case DRIVER_TEMP: return temperatureWords(p.driverTempF);
+            case PASSENGER_TEMP: return "passenger " + temperatureWords(p.passengerTempF);
             default: return "item " + item;
         }
     }
 
     /** The target as the car shows it: "70 °F", or "21.0 °C" on a Celsius car. */
-    private String temperatureWords() {
-        if (unit == CabinState.UNIT_CELSIUS) return targetSteps(unit) / 2.0 + " °C";
-        return targetSteps(CabinState.UNIT_FAHRENHEIT) + " °F";
+    private String temperatureWords(int tempF) {
+        if (unit == CabinState.UNIT_CELSIUS) return targetSteps(unit, tempF) / 2.0 + " °C";
+        return targetSteps(CabinState.UNIT_FAHRENHEIT, tempF) + " °F";
     }
 
     /** " (n steps)" for a stepped item that sent presses. */

@@ -111,19 +111,23 @@ seat_calls_only_in() {
         }
         END { exit !(n > 0 && bad == 0) }' "$1"
 }
-# refs_only_in <dexdump -d output> <method prefix> <ref>...: the code refers to at least one of
+# refs_only_in <dexdump -d output> <method prefix[|method prefix...]> <ref>...: the code refers to at least one of
 # the refs, and every reference is in the code of a method whose name starts with the prefix (a
 # whole class "pkg.Class." or one method "pkg.Class.method:"). Prints the offending lines.
 refs_only_in() {
     _f=$1; _want=$2; shift 2
     awk -v want="$_want" -v refs="$*" '
-        BEGIN { nr = split(refs, r, " ") }
+        BEGIN { nr = split(refs, r, " "); nw = split(want, w, "|") }
         /Class descriptor/ { meth = "" }
         /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m }
         {
             hit = 0
             for (i = 1; i <= nr; i++) if (index($0, r[i])) hit = 1
-            if (hit) { n++; if (index(meth, want) != 1) { print; bad++ } }
+            if (hit) {
+                n++; ok = 0
+                for (j = 1; j <= nw; j++) if (index(meth, w[j]) == 1) ok = 1
+                if (!ok) { print; bad++ }
+            }
         }
         END { exit !(n > 0 && bad == 0) }' "$_f"
 }
@@ -566,8 +570,8 @@ check "the editor shows each item as a Spinner" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' 'Landroid/widget/Spinner;\.<init>'
 check "the editor gives each spinner its own fixed view id" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' '\.setId:(I)V'
-check "the editor saves the whole preset (the 11-argument Preset constructor)" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.<init>:(Ljava/lang/String;IIIIIIIIII)V'
+check "the editor saves the whole preset (the 12-argument Preset constructor)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.<init>:(Ljava/lang/String;IIIIIIIIIII)V'
 check "the editor checks the whole preset (Preset.check(Preset))" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.check:(Lhkgclimate/core/Preset;)'
 check "the editor uses no RadioGroup or RadioButton" \
@@ -638,8 +642,9 @@ check "CheckedCabinSender.climate/eco/wheelPress are called only from PresetRunn
 # shellcheck disable=SC2086
 check "DatcClimateCalls.send and UsmSeatCalls.wheel/eco are called only from StockCabinCalls" \
     refs_only_in "$TMP/dexcode.txt" "$STOCK_FROM" $STOCK_REFS
+# start(Preset) calls start(Preset, long) inside the runner, so that method may name it too
 check "a preset run starts only from ClimateCore.onPresetTap" \
-    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.core.ClimateCore.onPresetTap:' 'Lhkgclimate/core/PresetRunner;.start:'
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.core.ClimateCore.onPresetTap:|hkgclimate.core.PresetRunner.start:(Lhkgclimate/core/Preset;)Z' 'Lhkgclimate/core/PresetRunner;.start:'
 check "ClimateService builds the CheckedCabinSender" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/CheckedCabinSender;\.<init>'
 check "ClimateService builds the StockCabinCalls" \

@@ -84,11 +84,16 @@ public class PresetChoicesTest {
     }
 
     private static final String[] ITEMS = {PresetChoices.ITEM_WHEEL, PresetChoices.ITEM_ECO,
-            PresetChoices.ITEM_CLIMATE, PresetChoices.ITEM_TEMPERATURE, PresetChoices.ITEM_FAN,
+            PresetChoices.ITEM_CLIMATE, PresetChoices.ITEM_DRIVER_TEMP,
+            PresetChoices.ITEM_PASSENGER_TEMP, PresetChoices.ITEM_FAN,
             PresetChoices.ITEM_AC, PresetChoices.ITEM_AIRFLOW, PresetChoices.ITEM_SYNC};
 
     private static boolean greyedIn(String item, int climate) {
-        return PresetChoices.greyed(item, climate);
+        return PresetChoices.greyed(item, climate, Preset.LEAVE);
+    }
+
+    private static boolean greyedWithSync(String item, int climate, int sync) {
+        return PresetChoices.greyed(item, climate, sync);
     }
 
     @Test
@@ -109,11 +114,28 @@ public class PresetChoicesTest {
     @Test
     public void offGreysTemperatureFanAcAirflowAndSync() {
         for (String item : ITEMS) {
-            boolean want = item.equals("temperature") || item.equals("fan") || item.equals("ac")
+            boolean want = item.equals("driverTemp") || item.equals("passengerTemp")
+                    || item.equals("fan") || item.equals("ac")
                     || item.equals("airflow") || item.equals("sync");
             assertEquals(item, want, greyedIn(item, Preset.CLIMATE_OFF));
         }
         assertTrue(greyedIn(PresetChoices.ITEM_SYNC, Preset.CLIMATE_OFF));
+    }
+
+    @Test
+    public void syncOnGreysThePassengerTemperatureOnly() {
+        for (int climate : new int[] {Preset.LEAVE, Preset.CLIMATE_AUTO, Preset.CLIMATE_MANUAL}) {
+            for (String item : ITEMS) {
+                boolean want = item.equals("passengerTemp")
+                        || (climate == Preset.CLIMATE_AUTO && (item.equals("fan")
+                        || item.equals("ac") || item.equals("airflow")));
+                assertEquals(item + " " + climate, want, greyedWithSync(item, climate, 1));
+            }
+        }
+        // sync off or left leaves the passenger temperature enabled (unless climate is off)
+        assertFalse(greyedWithSync("passengerTemp", Preset.CLIMATE_MANUAL, 0));
+        assertFalse(greyedWithSync("passengerTemp", Preset.CLIMATE_MANUAL, Preset.LEAVE));
+        assertTrue(greyedWithSync("passengerTemp", Preset.CLIMATE_OFF, 0));
     }
 
     @Test
@@ -129,14 +151,20 @@ public class PresetChoicesTest {
     public void greyedMatchesWhatThePresetStores() {
         // an item the editor greys is exactly an item the Preset constructor drops
         for (int climate : new int[] {Preset.LEAVE, 1, 2, 3}) {
-            Preset p = new Preset("x", 8, 8, 1, 1, climate, 70, 3, 1, 2, 1);
-            assertEquals(greyedIn("temperature", climate), p.tempF == Preset.LEAVE);
-            assertEquals(greyedIn("fan", climate), p.fan == Preset.LEAVE);
-            assertEquals(greyedIn("ac", climate), p.ac == Preset.LEAVE);
-            assertEquals(greyedIn("airflow", climate), p.airflow == Preset.LEAVE);
-            assertEquals(greyedIn("sync", climate), p.sync == Preset.LEAVE);
-            assertEquals(1, p.wheel);
-            assertEquals(1, p.eco);
+            for (int sync : new int[] {Preset.LEAVE, 0, 1}) {
+                Preset p = new Preset("x", 8, 8, 1, 1, climate, 70, 72, 3, 1, 2, sync);
+                assertEquals(greyedWithSync("driverTemp", climate, sync),
+                        p.driverTempF == Preset.LEAVE);
+                assertEquals(greyedWithSync("passengerTemp", climate, sync),
+                        p.passengerTempF == Preset.LEAVE);
+                assertEquals(greyedWithSync("fan", climate, sync), p.fan == Preset.LEAVE);
+                assertEquals(greyedWithSync("ac", climate, sync), p.ac == Preset.LEAVE);
+                assertEquals(greyedWithSync("airflow", climate, sync), p.airflow == Preset.LEAVE);
+                // sync is itself dropped only by Off (a value of Leave stays Leave)
+                assertEquals(climate == 1 || sync == Preset.LEAVE, p.sync == Preset.LEAVE);
+                assertEquals(1, p.wheel);
+                assertEquals(1, p.eco);
+            }
         }
     }
 }

@@ -7,7 +7,7 @@ public final class PresetSummary {
     private PresetSummary() { }
 
     /**
-     * "Cold: Driver heat high · Passenger off · Wheel on · Auto · 70 °F": every item the preset
+     * "Cold: Driver heat high · Passenger off · Wheel on · Auto · 70 / 72 °F": every item the preset
      * sets, seats first; an item left as is is not named.
      */
     public static String of(Preset p) {
@@ -26,7 +26,8 @@ public final class PresetSummary {
         else if (p.climate == Preset.CLIMATE_AUTO) first = add(sb, first, "Auto");
         else if (p.climate == Preset.CLIMATE_MANUAL) first = add(sb, first, "Manual");
         else if (p.climate != Preset.LEAVE) first = add(sb, first, "Climate " + p.climate);
-        if (p.tempF != Preset.LEAVE) first = add(sb, first, p.tempF + " °F");
+        String temps = temperatures(p);
+        if (temps != null) first = add(sb, first, temps);
         if (p.fan != Preset.LEAVE) first = add(sb, first, "Fan " + p.fan);
         first = onOff(sb, first, "A/C", p.ac);
         if (p.airflow != Preset.LEAVE) {
@@ -34,6 +35,19 @@ public final class PresetSummary {
         }
         onOff(sb, first, "Sync", p.sync);
         return sb.toString();
+    }
+
+    /**
+     * "70 °F" for the same temperature on both sides, "70 / 72 °F" (driver / passenger) when they
+     * differ, "Driver 70 °F" or "Passenger 72 °F" when only one side is set; null when neither is.
+     */
+    private static String temperatures(Preset p) {
+        int d = p.driverTempF;
+        int q = p.passengerTempF;
+        if (d == Preset.LEAVE && q == Preset.LEAVE) return null;
+        if (q == Preset.LEAVE) return "Driver " + d + " °F";
+        if (d == Preset.LEAVE) return "Passenger " + q + " °F";
+        return d == q ? d + " °F" : d + " / " + q + " °F";
     }
 
     private static boolean onOff(StringBuilder sb, boolean first, String item, int v) {

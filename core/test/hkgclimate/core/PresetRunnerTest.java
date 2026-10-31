@@ -218,7 +218,12 @@ public class PresetRunnerTest {
 
     static Preset preset(int wheel, int eco, int climate, int tempF, int fan, int ac, int airflow,
             int sync) {
-        return new Preset("Cold", L, L, wheel, eco, climate, tempF, fan, ac, airflow, sync);
+        return new Preset("Cold", L, L, wheel, eco, climate, tempF, tempF, fan, ac, airflow, sync);
+    }
+
+    /** A preset with only the two temperatures and Sync. */
+    static Preset temps(int driverTempF, int passengerTempF, int sync) {
+        return new Preset("Cold", L, L, L, L, L, driverTempF, passengerTempF, L, L, L, sync);
     }
 
     private void run(Preset p) {
@@ -565,7 +570,8 @@ public class PresetRunnerTest {
         assertEquals(Arrays.asList("climate 50 2", "climate 50 2", "climate 50 2"), car.calls);
         assertEquals(21.0f, car.driverTemp, 0f);
         assertEquals(21.0f, car.passengerTemp, 0f);
-        assertEquals(70, p.tempF);
+        assertEquals(70, p.driverTempF);
+        assertEquals(70, p.passengerTempF);
         assertEquals("Cold: 21.0 °C (3 steps)", runner.lastResult());
     }
 
@@ -698,22 +704,129 @@ public class PresetRunnerTest {
     }
 
     @Test
-    public void passengerIsNotSteppedWhileSyncIsOnEvenIfItLags() {
+    public void aSyncedPassengerWithTheDriversTargetIsNotSteppedEvenIfItsReadingLags() {
         car.sync = 1;
         car.passengerTemp = 75f; // the car has not caught up
         run(preset(L, L, L, 72, L, L, L, L));
         assertTrue(car.calls.isEmpty());
-        assertEquals("Cold: 72 °F; not done: passenger 72 °F (did not follow sync)",
-                runner.lastResult());
-
-        // it catches up while the runner waits
-        assertTrue(runner.start(preset(L, L, L, 72, L, L, L, L)));
-        sched.after(300, new Runnable() {
-            public void run() { car.passengerTemp = 72f; }
-        });
-        sched.runAll();
-        assertTrue(car.calls.isEmpty());
         assertEquals("Cold: 72 °F", runner.lastResult());
+    }
+
+    @Test
+    public void syncOnInThePresetStepsOnlyTheDriverAndThePassengerFollows() {
+        car.sync = 0;
+        car.driverTemp = 72f;
+        car.passengerTemp = 75f;
+        run(temps(70, 66, 1)); // the 66 is dropped: Sync on has no passenger temperature
+        assertEquals(Arrays.asList("climate 22 2", "climate 50 2", "climate 50 2"), car.calls);
+        assertEquals(70f, car.driverTemp, 0f);
+        assertEquals(70f, car.passengerTemp, 0f);
+        assertEquals("Cold: sync on, 70 °F (2 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void differentTemperaturesStepEachSideToItsOwnTarget() {
+        car.driverTemp = 72f;
+        car.passengerTemp = 72f;
+        run(temps(70, 74, 0));
+        assertEquals(Arrays.asList("climate 50 2", "climate 50 2", "climate 49 1", "climate 49 1"),
+                car.calls);
+        assertEquals(70f, car.driverTemp, 0f);
+        assertEquals(74f, car.passengerTemp, 0f);
+        assertEquals("Cold: sync off, 70 °F (2 steps), passenger 74 °F (2 steps)",
+                runner.lastResult());
+    }
+
+    @Test
+    public void syncOffInThePresetLetsADifferentPassengerTargetBeSteppedOnASyncedCar() {
+        car.sync = 1;
+        car.driverTemp = 72f;
+        car.passengerTemp = 72f;
+        run(temps(70, 74, 0));
+        assertEquals(Arrays.asList("climate 22 1", "climate 50 2", "climate 50 2", "climate 49 1",
+                "climate 49 1"), car.calls);
+        assertEquals(70f, car.driverTemp, 0f);
+        assertEquals(74f, car.passengerTemp, 0f);
+        assertEquals("Cold: sync off, 70 °F (2 steps), passenger 74 °F (2 steps)",
+                runner.lastResult());
+    }
+
+    @Test
+    public void aSyncedCarWithSyncLeftSkipsADifferentPassengerAndNamesIt() {
+        car.sync = 1;
+        car.driverTemp = 72f;
+        car.passengerTemp = 72f;
+        run(temps(70, 74, L));
+        // the driver steps (the passenger follows it); the passenger's own target would need sync off
+        assertEquals(Arrays.asList("climate 50 2", "climate 50 2"), car.calls);
+        assertEquals(1, car.sync);
+        assertEquals(70f, car.passengerTemp, 0f);
+        assertEquals("Cold: 70 °F (2 steps); not done: passenger 74 °F (sync on)",
+                runner.lastResult());
+    }
+
+    @Test
+    public void aSyncedCarWithOnlyAPassengerTargetSendsNothingAndNamesIt() {
+        car.sync = 1;
+        car.driverTemp = 72f;
+        car.passengerTemp = 72f;
+        run(temps(L, 70, L));
+        assertTrue(car.calls.isEmpty());
+        assertEquals("Cold: not done: passenger 70 °F (sync on)", runner.lastResult());
+    }
+
+    @Test
+    public void aSyncedCarWithTheSameTargetOnBothSidesIsSteppedOnceAndNothingIsNamed() {
+        car.sync = 1;
+        car.driverTemp = 72f;
+        car.passengerTemp = 72f;
+        run(temps(70, 70, L));
+        assertEquals(Collections.nCopies(2, "climate 50 2"), car.calls);
+        assertEquals(1, car.sync);
+        assertEquals("Cold: 70 °F (2 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void aPassengerOnlyPresetStepsThePassengerOnAnUnsyncedCar() {
+        car.driverTemp = 72f;
+        car.passengerTemp = 72f;
+        run(temps(L, 70, L));
+        assertEquals(Collections.nCopies(2, "climate 49 2"), car.calls);
+        assertEquals(72f, car.driverTemp, 0f);
+        assertEquals(70f, car.passengerTemp, 0f);
+        assertEquals("Cold: passenger 70 °F (2 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void aDriverOnlyOnCarSkipsThePassengerWhateverItsTarget() {
+        car.driverOnly = 1;
+        car.driverTemp = 72f;
+        car.passengerTemp = 0f; // not shown
+        run(temps(70, 74, 0));
+        assertEquals(Collections.nCopies(2, "climate 50 2"), car.calls);
+        assertEquals(70f, car.driverTemp, 0f);
+        assertEquals("Cold: sync off, 70 °F (2 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void aPassengerOnlyPresetOnADriverOnlyCarSendsNothing() {
+        car.driverOnly = 1;
+        car.passengerTemp = 75f; // stale reading
+        run(temps(L, 70, L));
+        assertTrue(car.calls.isEmpty());
+        assertEquals("Cold: nothing to do", runner.lastResult());
+    }
+
+    @Test
+    public void celsiusPassengerTargetIsConvertedAndLabelledOnItsOwn() {
+        car.unit = 1;
+        car.driverTemp = 22.0f;
+        car.passengerTemp = 22.0f;
+        run(temps(72, 70, 0)); // 22.0 °C and 21.0 °C
+        assertEquals(Collections.nCopies(2, "climate 49 2"), car.calls);
+        assertEquals(22.0f, car.driverTemp, 0f);
+        assertEquals(21.0f, car.passengerTemp, 0f);
+        assertEquals("Cold: sync off, 22.0 °C, passenger 21.0 °C (2 steps)", runner.lastResult());
     }
 
     @Test
@@ -808,7 +921,7 @@ public class PresetRunnerTest {
         assertFalse(runner.start(new Preset("A", 8, 8)));
         assertFalse(runner.start(preset(L, L, L, L, 9, L, L, L)));
         assertFalse(runner.start(preset(2, L, L, L, L, L, L, L)));
-        assertFalse(runner.start(new Preset("", L, L, 1, L, L, L, L, L, L, L)));
+        assertFalse(runner.start(new Preset("", L, L, 1, L, L, L, L, L, L, L, L)));
         assertFalse(runner.busy());
         assertTrue(car.calls.isEmpty());
         assertEquals(0, car.reads);

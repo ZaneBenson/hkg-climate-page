@@ -178,55 +178,56 @@ public class ClimateCorePresetTest {
     }
 
     @Test
-    public void setPresetsKeepsADefensiveCopyOfAtMostFour() {
+    public void setPresetsKeepsADefensiveCopyOfAtMostSix() {
         ready(2, 2);
         List<Preset> in = new ArrayList<Preset>();
-        for (int i = 0; i < 6; i++) in.add(new Preset("p" + i, 8, 8));
+        for (int i = 0; i < 8; i++) in.add(new Preset("p" + i, 8, 8));
         core.setPresets(in);
         in.clear();
         PageState s = core.pageState();
-        assertArrayEquals(new String[] {"p0", "p1", "p2", "p3"}, s.presetNames);
-        assertEquals(0, core.onPresetTap(4, 1));
+        assertArrayEquals(new String[] {"p0", "p1", "p2", "p3", "p4", "p5"}, s.presetNames);
+        assertEquals(0, core.onPresetTap(6, 1));
     }
 
     @Test
     public void setPresetsNullIsEmpty() {
         core.setPresets(one(8, 8));
         core.setPresets(null);
-        assertArrayEquals(new String[4], core.pageState().presetNames);
+        assertArrayEquals(new String[6], core.pageState().presetNames);
     }
 
     @Test
-    public void pageStateNamesAndEnabledForZeroTwoAndFourPresets() {
+    public void pageStateNamesAndEnabledForZeroTwoAndSixPresets() {
         ready(2, 2);
         PageState s = core.pageState();
-        assertEquals(4, s.presetNames.length);
-        assertEquals(4, s.presetEnabled.length);
-        assertArrayEquals(new String[4], s.presetNames);
-        assertArrayEquals(new boolean[4], s.presetEnabled);
+        assertEquals(6, s.presetNames.length);
+        assertEquals(6, s.presetEnabled.length);
+        assertArrayEquals(new String[6], s.presetNames);
+        assertArrayEquals(new boolean[6], s.presetEnabled);
 
         core.setPresets(Arrays.asList(new Preset("A", 8, 8), new Preset("B", 2, 2)));
         s = core.pageState();
-        assertArrayEquals(new String[] {"A", "B", null, null}, s.presetNames);
-        assertArrayEquals(new boolean[] {true, true, false, false}, s.presetEnabled);
+        assertArrayEquals(new String[] {"A", "B", null, null, null, null}, s.presetNames);
+        assertArrayEquals(new boolean[] {true, true, false, false, false, false}, s.presetEnabled);
 
         core.setPresets(Arrays.asList(new Preset("A", 8, 8), new Preset("B", 2, 2),
-                new Preset("C", 3, 3), new Preset("D", 7, -1)));
+                new Preset("C", 3, 3), new Preset("D", 7, -1), new Preset("E", 4, 4),
+                new Preset("F", -1, 5)));
         s = core.pageState();
-        assertArrayEquals(new String[] {"A", "B", "C", "D"}, s.presetNames);
-        assertArrayEquals(new boolean[] {true, true, true, true}, s.presetEnabled);
+        assertArrayEquals(new String[] {"A", "B", "C", "D", "E", "F"}, s.presetNames);
+        assertArrayEquals(new boolean[] {true, true, true, true, true, true}, s.presetEnabled);
     }
 
     @Test
     public void presetsAreNotEnabledWhenSeatsNotReady() {
         core.setPresets(Arrays.asList(new Preset("A", 8, 8), new Preset("B", 2, 2)));
         PageState s = core.pageState();
-        assertArrayEquals(new String[] {"A", "B", null, null}, s.presetNames);
-        assertArrayEquals(new boolean[4], s.presetEnabled);
+        assertArrayEquals(new String[] {"A", "B", null, null, null, null}, s.presetNames);
+        assertArrayEquals(new boolean[6], s.presetEnabled);
         core.onSeatsReady(true);
-        assertArrayEquals(new boolean[] {true, true, false, false}, core.pageState().presetEnabled);
+        assertArrayEquals(new boolean[] {true, true, false, false, false, false}, core.pageState().presetEnabled);
         core.onSeatsReady(false);
-        assertArrayEquals(new boolean[4], core.pageState().presetEnabled);
+        assertArrayEquals(new boolean[6], core.pageState().presetEnabled);
     }
 
     @Test
@@ -266,7 +267,7 @@ public class ClimateCorePresetTest {
     public void presetTapAppliesSeatsThenStartsTheRunner() {
         WithRunner w = new WithRunner();
         w.ready(2, 2);
-        w.core.setPresets(Arrays.asList(new Preset("Cold", 8, 8, 1, L, L, L, L, L, L, L)));
+        w.core.setPresets(Arrays.asList(new Preset("Cold", 8, 8, 1, L, L, L, L, L, L, L, L)));
         assertEquals(3, w.core.onPresetTap(0, 1));
         // the seats were just sent: the runner's first command waits 400 ms
         assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8"), w.car.calls);
@@ -285,7 +286,7 @@ public class ClimateCorePresetTest {
         WithRunner w = new WithRunner();
         w.ready(2, 2);
         w.core.onOutside(OutsideTemp.of(9f, 0xffff, 48f, 0xffff));
-        w.core.setPresets(Arrays.asList(new Preset("T", L, L, L, L, L, 70, L, L, L, L),
+        w.core.setPresets(Arrays.asList(new Preset("T", L, L, L, L, L, 70, 70, L, L, L, L),
                 new Preset("S", 8, 8)));
         assertEquals(1, w.core.onPresetTap(0, 1));
         assertTrue(w.runner.busy());
@@ -302,9 +303,9 @@ public class ClimateCorePresetTest {
     @Test
     public void runnerItemsRunWhenTheSeatsAreNotReady() {
         WithRunner w = new WithRunner();
-        w.core.setPresets(Arrays.asList(new Preset("Cold", 8, 8, 1, L, L, L, L, L, L, L),
+        w.core.setPresets(Arrays.asList(new Preset("Cold", 8, 8, 1, L, L, L, L, L, L, L, L),
                 new Preset("S", 8, 8)));
-        assertArrayEquals(new boolean[] {true, false, false, false}, w.core.pageState().presetEnabled);
+        assertArrayEquals(new boolean[] {true, false, false, false, false, false}, w.core.pageState().presetEnabled);
         assertEquals(1, w.core.onPresetTap(0, 1));
         assertEquals(Arrays.asList("wheel 1"), w.car.calls);
         w.sched.runAll();
@@ -314,9 +315,9 @@ public class ClimateCorePresetTest {
     @Test
     public void withoutARunnerOnlySeatItemsRunAndRunnerOnlyPresetsAreDisabled() {
         ready(2, 2);
-        core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L),
-                new Preset("Cold", 8, L, 1, L, L, L, L, L, L, L)));
-        assertArrayEquals(new boolean[] {false, true, false, false}, core.pageState().presetEnabled);
+        core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L, L),
+                new Preset("Cold", 8, L, 1, L, L, L, L, L, L, L, L)));
+        assertArrayEquals(new boolean[] {false, true, false, false, false, false}, core.pageState().presetEnabled);
         assertEquals(0, core.onPresetTap(0, 1));
         assertEquals(1, core.onPresetTap(1, 2));
         assertEquals(Arrays.asList("DRIVER=8"), rec.sent);
@@ -326,7 +327,7 @@ public class ClimateCorePresetTest {
     public void aRunnerPresetWithNothingToChangeStillCountsAsStarted() {
         WithRunner w = new WithRunner();
         w.car.wheel = 1;
-        w.core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L)));
+        w.core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L, L)));
         assertEquals(1, w.core.onPresetTap(0, 1));
         assertFalse(w.runner.busy());
         assertTrue(w.car.calls.isEmpty());

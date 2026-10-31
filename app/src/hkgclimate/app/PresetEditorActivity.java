@@ -204,8 +204,8 @@ public class PresetEditorActivity extends Activity {
                 applyGreying();
             }
         });
-        temperature = choiceSpinner(root, "Temperature", ID_TEMPERATURE, PresetChoices.ITEM_TEMPERATURE,
-                PresetChoices.temperatureChoices(unit), editing == null ? leave : editing.tempF);
+        temperature = choiceSpinner(root, "Temperature", ID_TEMPERATURE, PresetChoices.ITEM_DRIVER_TEMP,
+                PresetChoices.temperatureChoices(unit), editing == null ? leave : editing.driverTempF);
         fan = choiceSpinner(root, "Fan speed", ID_FAN, PresetChoices.ITEM_FAN,
                 PresetChoices.fan(), editing == null ? leave : editing.fan);
         ac = choiceSpinner(root, "A/C", ID_AC, PresetChoices.ITEM_AC,
@@ -299,10 +299,13 @@ public class PresetEditorActivity extends Activity {
      * a disabled dropdown keeps showing its value, and the Preset constructor stores it as Leave as is.
      */
     private void applyGreying() {
-        if (climate == null) return;
+        if (climate == null || sync == null) return;
         int mode = climate.value();
+        int syncValue = sync.value();
         for (Item item : items) {
-            if (item.name != null) item.view.setEnabled(!PresetChoices.greyed(item.name, mode));
+            if (item.name != null) {
+                item.view.setEnabled(!PresetChoices.greyed(item.name, mode, syncValue));
+            }
         }
     }
 
@@ -312,7 +315,7 @@ public class PresetEditorActivity extends Activity {
         List<Preset> next;
         try {
             Preset p = new Preset(nameField.getText().toString(), driver.value(), passenger.value(),
-                    wheel.value(), eco.value(), climate.value(), temperature.value(), fan.value(),
+                    wheel.value(), eco.value(), climate.value(), temperature.value(), temperature.value(), fan.value(),
                     ac.value(), airflow.value(), sync.value());
             String reason = Preset.check(p);
             if (reason != null) {

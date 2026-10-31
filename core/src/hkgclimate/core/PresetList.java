@@ -5,15 +5,18 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The saved presets as text and the edits on a list. A line has 11 tab-separated fields: name,
- * driver, passenger, wheel, eco, climate, temperature (F), fan, A/C, airflow, sync. Lines of the
- * first format (name, driver, passenger) are still read, with every other item left as is.
+ * The saved presets as text and the edits on a list. A line has 12 tab-separated fields: name,
+ * driver, passenger, wheel, eco, climate, driver temperature (F), passenger temperature (F), fan,
+ * A/C, airflow, sync. Older lines are still read: 11 fields (one temperature) give that temperature
+ * to both sides, except that a line with sync on keeps only the driver temperature; 3 fields
+ * (name, driver, passenger) leave every other item as is.
  * Nothing is escaped: a name with a tab or line break is not a valid preset.
  * Every edit returns a new list and leaves its input alone.
  */
 public final class PresetList {
-    public static final int MAX = 4;
-    private static final int FIELDS = 11;
+    public static final int MAX = 6;
+    private static final int FIELDS = 12;
+    private static final int FIELDS_V2 = 11;
 
     private PresetList() { }
 
@@ -25,8 +28,8 @@ public final class PresetList {
         for (Preset p : presets) {
             if (p == null || n >= MAX) continue;
             if (Preset.check(p) != null) continue;
-            int[] v = {p.driver, p.passenger, p.wheel, p.eco, p.climate, p.tempF, p.fan, p.ac,
-                    p.airflow, p.sync};
+            int[] v = {p.driver, p.passenger, p.wheel, p.eco, p.climate, p.driverTempF,
+                    p.passengerTempF, p.fan, p.ac, p.airflow, p.sync};
             b.append(p.name);
             for (int x : v) b.append('\t').append(x);
             b.append('\n');
@@ -44,7 +47,7 @@ public final class PresetList {
             String line = raw.endsWith("\r") ? raw.substring(0, raw.length() - 1) : raw;
             if (line.length() == 0) continue;
             String[] f = line.split("\t", -1);
-            if (f.length != 3 && f.length != FIELDS) continue;
+            if (f.length != 3 && f.length != FIELDS_V2 && f.length != FIELDS) continue;
             // the Preset trims its name, which would hide a stray carriage return at either end
             if (f[0].indexOf('\r') >= 0) continue;
             int[] v = new int[FIELDS - 1];
@@ -54,7 +57,13 @@ public final class PresetList {
             } catch (NumberFormatException e) {
                 continue;
             }
-            Preset p = new Preset(f[0], v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
+            if (f.length == FIELDS_V2) {
+                // the one temperature (v[5]) is both sides'; the fields after it move up by one.
+                // The Preset drops the passenger temperature when sync (the last field) is on.
+                System.arraycopy(v, 5, v, 6, FIELDS - 1 - 6);
+            }
+            Preset p = new Preset(f[0], v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9],
+                    v[10]);
             if (Preset.check(p) != null) continue;
             out.add(p);
         }

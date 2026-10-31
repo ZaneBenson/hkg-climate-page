@@ -12,7 +12,8 @@ public final class PresetChoices {
     public static final String ITEM_WHEEL = "wheel";
     public static final String ITEM_ECO = "eco";
     public static final String ITEM_CLIMATE = "climate";
-    public static final String ITEM_TEMPERATURE = "temperature";
+    public static final String ITEM_DRIVER_TEMP = "driverTemp";
+    public static final String ITEM_PASSENGER_TEMP = "passengerTemp";
     public static final String ITEM_FAN = "fan";
     public static final String ITEM_AC = "ac";
     public static final String ITEM_AIRFLOW = "airflow";
@@ -88,14 +89,17 @@ public final class PresetChoices {
     }
 
     /**
-     * Whether the climate mode greys the item out (it keeps showing its value but is stored as
-     * Leave as is). Auto greys fan, A/C and airflow; Off also greys temperature and sync; any
-     * other mode, and the seats, wheel, eco and climate itself, are never greyed.
+     * Whether the climate mode (or Sync) greys the item out (it keeps showing its value but is
+     * stored as Leave as is). Auto greys fan, A/C and airflow; Off also greys both temperatures
+     * and sync; Sync on greys the passenger temperature (the passenger follows the driver); any
+     * other combination, and the seats, wheel, eco and climate itself, are never greyed.
      */
-    public static boolean greyed(String item, int climate) {
+    public static boolean greyed(String item, int climate, int sync) {
+        if (ITEM_PASSENGER_TEMP.equals(item) && sync == 1) return true;
         if (climate != Preset.CLIMATE_AUTO && climate != Preset.CLIMATE_OFF) return false;
         if (ITEM_FAN.equals(item) || ITEM_AC.equals(item) || ITEM_AIRFLOW.equals(item)) return true;
-        return climate == Preset.CLIMATE_OFF && (ITEM_TEMPERATURE.equals(item) || ITEM_SYNC.equals(item));
+        return climate == Preset.CLIMATE_OFF && (ITEM_DRIVER_TEMP.equals(item)
+                || ITEM_PASSENGER_TEMP.equals(item) || ITEM_SYNC.equals(item));
     }
 
     private static Choice leave() { return new Choice(Preset.LEAVE, LEAVE_LABEL); }
