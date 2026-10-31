@@ -1,7 +1,14 @@
 # Builds and tests the package, the kit and the combined USB zip on every push and pull request.
-# The APK is signed with a throwaway key made fresh on each run (build-app.sh creates one when
-# private/keys is empty): the owner's key never leaves their machine. A CI package can't update an
-# install signed with the owner's key, so install builds from tools/build-*.sh on the owner's machine.
+#
+# Signing:
+# - Branches and pull requests: the APK is signed with a throwaway key made fresh on each run
+#   (build-app.sh creates one when private/keys is empty). Those zips can't update an install
+#   signed with the release key; they are for checking the build only.
+# - Tags v<version> (for example v2.0.0): the APK is signed with the release key from the
+#   repository secrets HKGCLIMATE_KEYSTORE_B64 (the JKS keystore, base64; alias hkgclimate) and
+#   HKGCLIMATE_KEYSTORE_PASSWORD, the tag must match the version in app/AndroidManifest.xml and
+#   package/NEMESIS.data, and the zips are attached to the GitHub release for the tag.
+#
 # The package mock test needs the stock panel files (private/stock/260507), so it reports SKIP here.
 name: build
 
@@ -16,10 +23,19 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # build-package.sh writes git describe into BUILD
+
+      - name: Tag matches the version
+        if: env.RELEASE == 'true'
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          grep -q "android:versionName=\"$v\"" app/AndroidManifest.xml || { echo "::error::app/AndroidManifest.xml versionName is not $v"; exit 1; }
+          grep -qx "version=$v" package/NEMESIS.data || { echo "::error::package/NEMESIS.data version is not $v"; exit 1; }
 
       - uses: actions/setup-java@v4
         with:
@@ -50,12 +66,28 @@ jobs:
           sh tests/toolchain/run.sh
           sh tests/app/check-app.sh
           sh tests/panel/check-page.sh
-          python3 -m unittest -v tests/panel/test_patch_panel.py
+          (eval "$(tools/toolchain.sh env)" && python3 -m unittest -v tests/panel/test_patch_panel.py)
           sh tests/kit/run.sh
+
+      - name: Release signing key
+        if: env.RELEASE == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.HKGCLIMATE_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.HKGCLIMATE_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::release tags need the secrets HKGCLIMATE_KEYSTORE_B64 and HKGCLIMATE_KEYSTORE_PASSWORD"
+            exit 1
+          fi
+          umask 077
+          mkdir -p private/keys
+          echo "$KEYSTORE_B64" | base64 -d > private/keys/hkgclimate.jks
+          printf '%s\n' "$KEYSTORE_PASSWORD" > private/keys/password
 
       - name: Build package, kit and USB zip
         run: |
           tools/build-app.sh
+          "$ANDROID_SDK/build-tools/30.0.3/apksigner" verify --print-certs build/app/hkgclimate.apk | grep -E 'SHA-256|DN:'
           tools/build-package.sh
           rc=0; sh tests/package/run.sh || rc=$?
           [ "$rc" = 0 ] || [ "$rc" = 2 ] # 2: SKIP, no stock files on the runner
@@ -63,8 +95,33 @@ jobs:
           tools/build-usb.sh
           sh tests/usb/run.sh
 
+      - name: Remove the signing key
+        if: always()
+        run: rm -rf private/keys
+
       - uses: actions/upload-artifact@v4
         with:
-          name: hkg-climate-ci-${{ github.sha }}
+          name: hkg-climate-${{ env.RELEASE == 'true' && github.ref_name || format('ci-{0}', github.sha) }}
           path: dist/*.zip
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: hkg-climate-${{ github.ref_name }}
+          path: dist
+
+      - name: Attach the zips to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes "HKG Climate Page $GITHUB_REF_NAME. Install hkg-climate-usb.zip (package and kit on one USB stick); see README-USB.txt inside."
+          gh release upload "$GITHUB_REF_NAME" dist/*.zip --clobber

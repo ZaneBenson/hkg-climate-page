@@ -40,9 +40,20 @@ The first `build-app.sh` run creates the signing key in `private/keys/`: back it
 patch files are committed, so `tools/build-panel.sh` is not needed to package.
 
 CI (`.github/workflows/build.yml`) runs the same tests and builds on every push and uploads the
-zips as a build artifact. Those are signed with a throwaway key made on each run, so they can't
-update an install signed with your own key: build the zips you install on your own machine. The
-package mock test needs the stock panel files, so CI skips it.
+zips as a build artifact. The package mock test needs the stock panel files, so CI skips it.
+
+- Branches and pull requests are signed with a throwaway key made on each run, so their zips
+  can't update an install signed with the release key. Use them to check the build only.
+- Tags `v<version>` (for example `v2.0.0`) are signed with the release key from the repository
+  secrets `HKGCLIMATE_KEYSTORE_B64` (the keystore, base64; alias `hkgclimate`) and
+  `HKGCLIMATE_KEYSTORE_PASSWORD`. The tag must match the version in `app/AndroidManifest.xml`
+  and `package/NEMESIS.data`, and the zips are attached to the GitHub release for the tag.
+
+To release: set the version in both files, commit, then `git tag v<version>` and
+`git push origin v<version>`. To store the key in the secrets:
+
+    base64 -w0 private/keys/hkgclimate.jks | gh secret set HKGCLIMATE_KEYSTORE_B64
+    gh secret set HKGCLIMATE_KEYSTORE_PASSWORD < private/keys/password
 
 ## About
 
