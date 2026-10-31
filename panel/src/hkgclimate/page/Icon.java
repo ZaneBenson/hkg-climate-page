@@ -275,6 +275,7 @@ final class Icon extends Drawable {
         try {
             Path cut = new Path();
             if (cut.op(blades, hub, Path.Op.DIFFERENCE)) return cut;
+            Log.w(TAG, "cutting the fan hub failed; drawing the fan without its hole");
         } catch (Throwable t) {
             Log.e(TAG, "cutting the fan hub failed", t);
         }
