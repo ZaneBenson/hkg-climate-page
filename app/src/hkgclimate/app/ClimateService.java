@@ -69,6 +69,8 @@ public class ClimateService extends Service {
     };
     // main thread: highlightTick is posted
     private boolean highlightPosted;
+    // main thread: a page was subscribed at the last binder change (a new one gets one check at once)
+    private boolean pageWasSubscribed;
     // main thread: the presets as given to the core, to look up a tapped slot
     private List<Preset> presets = new ArrayList<Preset>();
     // main thread: the sender's last result or the latest "no change" text, whichever came last
@@ -174,7 +176,7 @@ public class ClimateService extends Service {
                 @Override public void run() { binder.onDebugChanged(); }
             });
             binder.setOnChange(new Runnable() {
-                @Override public void run() { updateHighlightPoll(); }
+                @Override public void run() { onBinderChange(); }
             });
             prefs.register(prefListener);
             car.start();
@@ -269,6 +271,24 @@ public class ClimateService extends Service {
             debugChanged();
         } catch (Throwable t) {
             Log.w(TAG, "checking the send failed", t);
+        }
+    }
+
+    /**
+     * Main thread, after every core change and every page subscribe or unsubscribe: keeps the poll
+     * going, and when a page has just subscribed with a preset highlighted, checks it once at
+     * once, so a reopened page does not show a stale highlight until the first poll.
+     */
+    private void onBinderChange() {
+        updateHighlightPoll();
+        try {
+            PageLinkBinder b = binder;
+            boolean subscribed = b != null && b.hasSubscribers();
+            boolean justSubscribed = subscribed && !pageWasSubscribed;
+            pageWasSubscribed = subscribed;
+            if (justSubscribed) highlightCheck();
+        } catch (Throwable t) {
+            Log.w(TAG, "the check on subscribe failed", t);
         }
     }
 

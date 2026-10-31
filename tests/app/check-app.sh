@@ -763,6 +763,12 @@ check "the highlight check uses the core's clock (SystemClock.elapsedRealtime)" 
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.highlightCheck:' 'Landroid/os/SystemClock;\.elapsedRealtime:'
 check "the highlight check sends nothing (no sender, runner start or tap)" \
     method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.highlightCheck:' 'CheckedSeatSender\|CheckedCabinSender\|SeatCommander\|PresetRunner;\.start:\|ClimateCore;\.onTap\|ClimateCore;\.onPresetTap\|ClimateCore;\.onSeatOff\|ClimateCore;\.onSeatSwap'
+check "a page that subscribes gets one highlight check at once (onBinderChange calls highlightCheck)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onBinderChange:' 'ClimateService;\.highlightCheck:'
+check "that check follows the subscriber list (onBinderChange reads PageLinkBinder.hasSubscribers)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onBinderChange:' 'PageLinkBinder;\.hasSubscribers:'
+check "onBinderChange still keeps the poll going (updateHighlightPoll)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onBinderChange:' 'ClimateService;\.updateHighlightPoll:'
 check "the highlight poll runs only with a page subscribed (PageLinkBinder.hasSubscribers)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.updateHighlightPoll:' 'PageLinkBinder;\.hasSubscribers:'
 check "the highlight poll runs only with a preset active (ClimateCore.activePreset)" \
@@ -816,6 +822,37 @@ finish_guarded() {
             exit 0
         }' "$1"
 }
+# closes_guarded <dexdump -d output> <class>: the class and its inner classes call finish() or
+# Activity.onBackPressed() at least once, and every such call is inside a try range of its own method
+closes_guarded() {
+    awk -v cls="$2" '
+        function hex(s,   i, n) {
+            sub(/^0x/, "", s); n = 0
+            for (i = 1; i <= length(s); i++) n = n * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+            return n
+        }
+        BEGIN { nf = 0; nr = 0 }
+        /Class descriptor/ { meth = "" }
+        /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m; next }
+        index(meth, cls ".") != 1 && index(meth, cls "$") != 1 { next }
+        match($0, /\|[0-9a-f]+: /) {
+            if (index($0, "invoke-") && ($0 ~ /;\.finish[A-Za-z]*:\(/ || $0 ~ /Landroid\/app\/Activity;\.onBackPressed:\(/)) {
+                fm[nf] = meth; fa[nf] = hex(substr($0, RSTART + 1, RLENGTH - 3)); nf++
+            }
+            next
+        }
+        /^ +0x[0-9a-f]+ - 0x[0-9a-f]+$/ { lo = hex($1); hi = hex($3); next }
+        /-> 0x[0-9a-f]+/ { rm[nr] = meth; rl[nr] = lo; rh[nr] = hi; nr++ }
+        END {
+            if (nf == 0) exit 1
+            for (i = 0; i < nf; i++) {
+                ok = 0
+                for (j = 0; j < nr; j++) if (rm[j] == fm[i] && fa[i] >= rl[j] && fa[i] < rh[j]) ok = 1
+                if (!ok) exit 1
+            }
+            exit 0
+        }' "$1"
+}
 scratch_dex spin1 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.Spinner(c); } }'
 scratch_dex spin2 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.Spinner(c, android.widget.Spinner.MODE_DIALOG); } }'
 scratch_dex spin3 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.TextView(c); } }'
@@ -825,6 +862,13 @@ scratch_dex fin_ok PresetEditorActivity 'package hkgclimate.app; class PresetEdi
 scratch_dex fin_bare PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { error.setText("Saved"); finish(); } }'
 scratch_dex fin_quiet PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { error.setText("Saved"); try { finish(); } catch (Throwable t) { error.setText("failed"); } } }'
 scratch_dex fin_none PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { try { error.setText("x"); } catch (Throwable t) { error.setText("Saved"); } } }'
+scratch_dex cl_ok PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { void close() { try { finish(); } catch (Throwable t) { } } @Override public void onBackPressed() { try { super.onBackPressed(); } catch (Throwable t) { } } class Cancel { void go() { close(); } } }'
+scratch_dex cl_finish PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { void close() { try { finish(); } catch (Throwable t) { } } void onCancel() { finish(); } @Override public void onBackPressed() { try { super.onBackPressed(); } catch (Throwable t) { } } }'
+scratch_dex cl_back PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { void close() { try { finish(); } catch (Throwable t) { } } @Override public void onBackPressed() { super.onBackPressed(); } }'
+scratch_dex cl_inner PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { void close() { try { finish(); } catch (Throwable t) { } } class Cancel implements Runnable { public void run() { PresetEditorActivity.this.finish(); } } }'
+scratch_dex cl_none PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { void go() { try { setTitle("x"); } catch (Throwable t) { } } }'
+scratch_dex cl_set SettingsActivity 'package hkgclimate.app; class SettingsActivity extends android.app.Activity { @Override public void onBackPressed() { try { super.onBackPressed(); } catch (Throwable t) { } } }'
+scratch_dex cl_setbad SettingsActivity 'package hkgclimate.app; class SettingsActivity extends android.app.Activity { @Override public void onBackPressed() { super.onBackPressed(); } }'
 scratch_dex lis1 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void save(android.widget.Spinner a, android.widget.Spinner b, android.widget.AdapterView.OnItemSelectedListener l) { a.setOnItemSelectedListener(l); } }'
 scratch_dex lis2 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void save(android.widget.Spinner a, android.widget.Spinner b, android.widget.AdapterView.OnItemSelectedListener l) { a.setOnItemSelectedListener(l); b.setOnItemSelectedListener(l); } }'
 
@@ -910,6 +954,29 @@ check "self-test: finish_guarded fails a method with no finish at all" \
     fails finish_guarded "$ST/fin_none/code.txt" 'hkgclimate.app.PresetEditorActivity.save:' Saved
 check "self-test: finish_guarded fails a listing with no such method" \
     fails finish_guarded "$ST/fin_ok/code.txt" 'hkgclimate.app.PresetEditorActivity.nothere:' Saved
+
+check "the editor closes only inside a try (every finish() and Back call, inner classes too)" \
+    closes_guarded "$TMP/dexcode.txt" hkgclimate.app.PresetEditorActivity
+check "the editor overrides Back (onBackPressed calls the Activity's, guarded above)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.onBackPressed:' 'Landroid/app/Activity;\.onBackPressed:'
+check "the settings screen's Back is inside a try (every finish() and Back call)" \
+    closes_guarded "$TMP/dexcode.txt" hkgclimate.app.SettingsActivity
+check "the settings screen overrides Back (onBackPressed calls the Activity's)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.onBackPressed:' 'Landroid/app/Activity;\.onBackPressed:'
+check "self-test: closes_guarded passes guarded finish, Back and an inner class closing through the helper" \
+    closes_guarded "$ST/cl_ok/code.txt" hkgclimate.app.PresetEditorActivity
+check "self-test: closes_guarded fails an unguarded finish() in another method" \
+    fails closes_guarded "$ST/cl_finish/code.txt" hkgclimate.app.PresetEditorActivity
+check "self-test: closes_guarded fails an unguarded Back" \
+    fails closes_guarded "$ST/cl_back/code.txt" hkgclimate.app.PresetEditorActivity
+check "self-test: closes_guarded fails an unguarded finish() in an inner class" \
+    fails closes_guarded "$ST/cl_inner/code.txt" hkgclimate.app.PresetEditorActivity
+check "self-test: closes_guarded fails a class with no close call at all" \
+    fails closes_guarded "$ST/cl_none/code.txt" hkgclimate.app.PresetEditorActivity
+check "self-test: closes_guarded passes a guarded settings Back" \
+    closes_guarded "$ST/cl_set/code.txt" hkgclimate.app.SettingsActivity
+check "self-test: closes_guarded fails an unguarded settings Back" \
+    fails closes_guarded "$ST/cl_setbad/code.txt" hkgclimate.app.SettingsActivity
 
 check "the settings screen goes through the narrow column (Column.wrap)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.buildViews:' 'Lhkgclimate/app/Column;\.wrap:'

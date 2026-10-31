@@ -407,6 +407,16 @@ public class SettingsActivity extends Activity {
         call(PageLink.TX_SUBSCRIBE);
     }
 
+    /** Back goes through finish(), which can throw on this head unit (SecurityException): guarded. */
+    @Override
+    public void onBackPressed() {
+        try {
+            super.onBackPressed();
+        } catch (Throwable t) {
+            Log.w(TAG, "back could not close settings", t);
+        }
+    }
+
     /** Unsubscribe and unbind; safe to call twice. */
     private void disconnect() {
         if (service != null) call(PageLink.TX_UNSUBSCRIBE);

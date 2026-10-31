@@ -158,7 +158,7 @@ public class PresetEditorActivity extends Activity {
             applyGreying();
         } catch (Throwable t) {
             Log.w(TAG, "preset editor failed to start", t);
-            finish();
+            close();
         }
     }
 
@@ -244,7 +244,7 @@ public class PresetEditorActivity extends Activity {
         Button cancel = new Button(this);
         cancel.setText("Cancel");
         cancel.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { finish(); }
+            @Override public void onClick(View v) { close(); }
         });
         buttons.addView(save);
         buttons.addView(cancel);
@@ -368,6 +368,28 @@ public class PresetEditorActivity extends Activity {
             error.setTextColor(Color.rgb(0, 128, 0));
             error.setText(SAVED);
             saveButton.setEnabled(false); // a second Save would add the preset again
+        }
+    }
+
+    /**
+     * Closes the editor. finish() can throw on this head unit (SecurityException, GET_TASKS), so
+     * every close but Save's (which says Saved) goes through here: a throw is logged, never a crash.
+     */
+    private void close() {
+        try {
+            finish();
+        } catch (Throwable t) {
+            Log.w(TAG, "the editor could not close", t);
+        }
+    }
+
+    /** Back goes through finish() too: guarded the same way. */
+    @Override
+    public void onBackPressed() {
+        try {
+            super.onBackPressed();
+        } catch (Throwable t) {
+            Log.w(TAG, "back could not close the editor", t);
         }
     }
 
