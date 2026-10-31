@@ -27,6 +27,9 @@ DALVIK_ENTRY=/data/dalvik-cache/system@app@RightScreenHome.apk@classes.dex
 FILES="RightScreenHome.apk RightScreenHome.odex"
 PANEL=com.mobis.splitscreen.right
 APP_PKG=hkgclimate.app
+APP_DATA=/data/data/hkgclimate.app
+APP_PREFS=/data/data/hkgclimate.app/shared_prefs/hkgclimate.xml
+KEPT_PREFS=/data/nemesis/hkg.climate.page.settings.xml
 NEMESIS=/system/xbin/nemesis
 DEXOPT=/system/bin/dexopt
 REBOOT=/system/bin/reboot
@@ -388,6 +391,79 @@ retire_usb_descriptor() {
         fi
     done
     true
+}
+
+# keep_settings: NEMESIS uninstalls the app after preuninstall (an update too), which wipes its
+# data: copy its settings file (presets, switch temperature, page on/off) to KEPT_PREFS for
+# postinstall to put back. Only that file; a copy kept from before stays unless replaced
+# whole. A failure only logs.
+keep_settings() {
+    local _tmp=$KEPT_PREFS.tmp
+    if [ ! -f "$APP_PREFS" ]; then log "no app settings to keep"; return 0; fi
+    rm -f "$_tmp" 2>/dev/null
+    if cp "$APP_PREFS" "$_tmp" 2>/dev/null && cmp "$APP_PREFS" "$_tmp" > /dev/null 2>&1 \
+        && chmod 600 "$_tmp" 2>/dev/null && mv "$_tmp" "$KEPT_PREFS" 2>/dev/null; then
+        log "kept the app settings in $KEPT_PREFS"
+    else
+        rm -f "$_tmp" 2>/dev/null
+        log "WARN: could not keep the app settings in $KEPT_PREFS"
+    fi
+    return 0
+}
+
+# owner_of <words of an ls -ldn line>: OWNER=<uid>:<gid>. The head unit's toolbox ls prints
+# mode, uid, gid, date (no link count, and no size for a directory); busybox and GNU ls print
+# mode, links, uid, gid, size. Fails on anything else and on root.
+owner_of() {
+    local _u _g
+    case "$2$3$4" in
+        *[!0-9]*) _u=$2; _g=$3 ;;
+        *) _u=$3; _g=$4 ;;
+    esac
+    case "$_u" in ''|*[!0-9]*) return 1 ;; esac
+    case "$_g" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$_u" != 0 ] && [ "$_g" != 0 ] || return 1
+    OWNER=$_u:$_g
+}
+
+# set_owner <file>: chown to OWNER (toolbox takes uid:gid or uid.gid)
+set_owner() {
+    chown "$OWNER" "$1" 2>/dev/null || chown "${OWNER%:*}.${OWNER#*:}" "$1" 2>/dev/null
+}
+
+# restore_settings: put KEPT_PREFS back as the app's settings file, only when the app has none
+# (after an update's uninstall wiped it), owned by the app (the owner of its data directory)
+# with mode 660 as Android writes it. Runs before the service starts: the app's first run
+# creates the file. A failure only logs; the copy stays for a later install.
+restore_settings() {
+    local _l _dir=${APP_PREFS%/*} _tmp=$APP_PREFS.hkgtmp
+    if [ ! -f "$KEPT_PREFS" ]; then log "no kept app settings to restore"; return 0; fi
+    if [ -e "$APP_PREFS" ]; then log "the app has its own settings - not restoring $KEPT_PREFS"; return 0; fi
+    OWNER=
+    _l=$(ls -ldn "$APP_DATA" 2>/dev/null)
+    set -f
+    set -- $_l
+    set +f
+    if [ ! -d "$APP_DATA" ] || ! owner_of "$@"; then
+        log "WARN: cannot read the owner of $APP_DATA - settings not restored (kept in $KEPT_PREFS; ls: $_l)"
+        return 0
+    fi
+    if [ ! -d "$_dir" ]; then
+        if ! mkdir "$_dir" 2>/dev/null || ! set_owner "$_dir" || ! chmod 771 "$_dir" 2>/dev/null; then
+            rmdir "$_dir" 2>/dev/null
+            log "WARN: could not restore the app settings: cannot make $_dir (kept in $KEPT_PREFS)"
+            return 0
+        fi
+    fi
+    rm -f "$_tmp" 2>/dev/null
+    if cp "$KEPT_PREFS" "$_tmp" 2>/dev/null && cmp "$KEPT_PREFS" "$_tmp" > /dev/null 2>&1 \
+        && set_owner "$_tmp" && chmod 660 "$_tmp" 2>/dev/null && mv "$_tmp" "$APP_PREFS" 2>/dev/null; then
+        log "restored the app settings from $KEPT_PREFS (owner $OWNER)"
+    else
+        rm -f "$_tmp" 2>/dev/null
+        log "WARN: could not restore the app settings from $KEPT_PREFS (kept there)"
+    fi
+    return 0
 }
 
 # drop_page4 <list>: PAGES = the comma list without page 4, each entry trimmed of spaces and

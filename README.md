@@ -6,13 +6,36 @@ switch temperature, cooling above it), the outside temperature, and preset butto
 apply several climate settings at once. A small settings app sets the switch temperature
 and builds the presets.
 
-**Status: version 1.1.0 on branch `climate-presets` (not merged): presets now also set the steering-wheel heat, eco mode, climate off/auto/manual, temperature, fan, A/C, airflow and sync, with a dropdown editor. Release v1.0.0 (seat buttons, outside temperature and presets of the seats) was the previous public release.**
-Built, not yet tried on the car. The owner's on-car checklist is
-[docs/testing/2026-10-31-climate-presets.md](docs/testing/2026-10-31-climate-presets.md). Earlier checklists:
+**Status: version 1.2.0 on branch `version-1-2` (not merged): presets land reliably (commands
+spaced out, and a temperature or fan step the car missed is pressed again, at most twice), Save
+no longer crashes, every editor dropdown scrolls, a preset sets the driver and passenger
+temperatures separately, up to six presets, the preset in effect is highlighted, a redesigned
+panel (gear button, seat icons that show the mode, swap and off buttons), and presets and
+settings are kept across updates.** Built, not yet tried on the car. Version 1.1.0 (climate
+presets) was tried on the car on 2026-10-31; release v1.0.0 (seat buttons, outside temperature
+and presets of the seats) was the previous public release.
+The owner's on-car checklist is
+[docs/testing/2026-10-31-version-1-2.md](docs/testing/2026-10-31-version-1-2.md). Earlier checklists:
+[climate presets (1.1.0)](docs/testing/2026-10-31-climate-presets.md),
 [presets of the seats (v1.0.0)](docs/testing/2026-10-30-presets.md),
 [version 1](docs/testing/2026-10-30-version-1.md),
 [test build 2](docs/testing/2026-10-30-test-build-2.md),
 [test build 1](docs/testing/2026-10-30-test-build-1.md).
+
+## Updating
+
+NEMESIS won't install over an installed package while the head unit is running (it asks you to
+uninstall first; dismiss that message). To update, plug the stick with the new version in and
+restart the head unit with the stick still in: NEMESIS runs the update while the head unit
+starts (the old version's uninstall step, then the new install), and the head unit restarts once
+more by itself when it's done. If the climate page is missing after that, restart once more with
+the stick in (an update can need a restart to free space on /system).
+
+Presets and settings (switch temperature, page on or off) are kept: from 1.2.0 on, the uninstall
+step saves them to the NEMESIS folder and the install puts them back. An update from 1.1.0 or
+older loses them once, because the older uninstall step doesn't save them. Uninstalling in
+NEMESIS, restarting and installing again also keeps them (the saved copy stays in the NEMESIS
+folder).
 
 ## Build
 
@@ -34,8 +57,9 @@ Then:
    panel build)
 3. `tools/build-app.sh`, then `tools/build-package.sh` (writes `dist/hkg-climate-page.zip`)
 4. Optional: `tools/build-kit.sh` and `tools/build-usb.sh` (writes `dist/hkg-climate-usb.zip`:
-   the package plus the read-only kit on one USB stick; the install runs on insert, the kit
-   from NEMESIS Manager's "Run USB NEMESIS.sh")
+   the package plus the read-only kit on one USB stick; a first install runs on insert, an
+   update when the head unit restarts with the stick in (see "Updating"), the kit from NEMESIS
+   Manager's "Run USB NEMESIS.sh")
 
 `tools/build-capture.sh` writes `dist/hkg-climate-capture.zip`, a read-only tool that records the
 Android log on a USB stick while the stock climate controls are used (checklist:
@@ -69,7 +93,8 @@ Target car: 2023 US Hyundai Ioniq 5 (`NEEV23.USA.`, firmware 260507).
 - Commands and settings found so far, for the community:
   [docs/community/gen5w-climate-commands.md](docs/community/gen5w-climate-commands.md)
 - Design: [docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md](docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md);
-  climate presets: [docs/superpowers/specs/2026-10-31-climate-presets-design.md](docs/superpowers/specs/2026-10-31-climate-presets-design.md)
-- Current plan: [docs/superpowers/plans/2026-10-30-presets.md](docs/superpowers/plans/2026-10-30-presets.md)
+  climate presets: [docs/superpowers/specs/2026-10-31-climate-presets-design.md](docs/superpowers/specs/2026-10-31-climate-presets-design.md);
+  version 1.2: [docs/superpowers/specs/2026-10-31-version-1-2-design.md](docs/superpowers/specs/2026-10-31-version-1-2-design.md)
+- Current plan: [docs/superpowers/plans/2026-10-31-version-1-2.md](docs/superpowers/plans/2026-10-31-version-1-2.md)
 
 Licence: GPL-3.0 (see `LICENSE`). Credits: `NOTICE.md`.

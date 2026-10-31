@@ -20,8 +20,9 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Plan 3 (test build 2: approved seat command behind an approval switch) | Installed and tested on the owner's car (2026-10-30): seat taps change both seats through heat and cool. |
 | Plan 4 (version 1: owner's layout changes, taps always send, install message for low /system space) | Built (1.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-version-1.md`. |
 | Plan 5 (version 2: presets of the seat settings, up to 4, applied from the page) | Built, released as v1.0.0 (versionCode 4; planned as 2.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-presets.md`. |
-| Plan 6 (climate presets: steering wheel, eco, climate off/auto/manual, temperature, fan, A/C, airflow and sync in a preset; dropdown editor; checked save) | Built (1.1.0, versionCode 5), not yet on the car. The commands are the owner-approved set under "Climate preset commands". Checklist: `docs/testing/2026-10-31-climate-presets.md`. |
-| Branches | Version 1 and presets merged into `main` (2026-10-30). The climate presets work (1.1.0) is on branch `climate-presets`, not merged. |
+| Plan 6 (climate presets: steering wheel, eco, climate off/auto/manual, temperature, fan, A/C, airflow and sync in a preset; dropdown editor; checked save) | Built (1.1.0, versionCode 5), tried on the owner's car (2026-10-31; what it showed is in `docs/superpowers/specs/2026-10-31-version-1-2-design.md`). The commands are the owner-approved set under "Climate preset commands". Checklist: `docs/testing/2026-10-31-climate-presets.md`. |
+| Plan 7 (version 1.2: command spacing and retries, Save without a crash, scrollable dropdowns, driver and passenger temperatures, six presets, applied-preset highlight, redesigned panel, settings kept across updates) | Built (1.2.0, versionCode 6), not yet on the car. Plan: `docs/superpowers/plans/2026-10-31-version-1-2.md`. Checklist: `docs/testing/2026-10-31-version-1-2.md`. |
+| Branches | Version 1 and presets merged into `main` (2026-10-30). The climate presets work (1.1.0) is on branch `climate-presets`, not merged. Version 1.2 (1.2.0) is on branch `version-1-2`, not merged. |
 
 ## Seat command approval (2026-10-30)
 
@@ -81,8 +82,16 @@ first build, so the next build sends these.
   on, 1 off (this car's CAN-DB generation is 2), sent only when `getClimateControlECOMode()`
   (1 on / 0 off) differs.
 - **Gate:** at most one press at a time for stepped items, each decided from the car's reported
-  value, with a cap per item; nothing at boot, on state changes, on settings changes, or as a
-  retry; nothing for an item whose state is unknown; firmware 260507 only.
+  value, with a cap per item; nothing at boot, on state changes or on settings changes; no
+  retry except the temperature and fan retries below; nothing for an item whose state is
+  unknown; firmware 260507 only.
+- **Retries (approved by the owner, 2026-10-31, for version 1.2):** a temperature or fan step
+  whose value hasn't changed 500 ms after the press is re-read and pressed again, at most 2
+  retries per step, each press counted toward the item's cap (fan 10, temperature 25). Never
+  for single-press items (climate off, auto, A/C, airflow, sync, steering wheel, eco) or for the
+  forced press that leaves auto. Commands of a preset run are at least 400 ms apart.
+- **Seat off button (version 1.2):** the × on the page sends seat value 2 (off), the approved
+  seat command above (already approved); the swap button sends nothing.
 
 ## Design summary
 

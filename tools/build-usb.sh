@@ -5,7 +5,8 @@
 #   NEMESIS.sh, FILES        the kit, without its own NEMESIS.data: run it from NEMESIS
 #                            Manager, "Run USB NEMESIS.sh"
 #   README-USB.txt           what to do with the stick
-# A stick has only one NEMESIS.data, so only the install starts on insert; the install
+# A stick has only one NEMESIS.data, so only the install starts on insert (an update of an
+# installed package starts when the head unit restarts with the stick in); the install
 # renames it to NEMESIS.data.installed when it finishes.
 # usage: tools/build-usb.sh [output zip]   (default: dist/hkg-climate-usb.zip)
 # Needs dist/hkg-climate-page.zip (tools/build-package.sh).
@@ -32,6 +33,12 @@ Install
 1. Car on, plug in the stick, tap Yes. The package installs and the head unit
    restarts. At the end the install renames NEMESIS.data to
    NEMESIS.data.installed, so the stick does not install again.
+   To update an installed HKG Climate Page: NEMESIS won't install over it while
+   the head unit is running (dismiss its message). Plug the stick in and restart
+   the head unit with the stick still in: NEMESIS updates while the head unit
+   starts, then the head unit restarts once more by itself. If the climate page
+   is missing after that, restart once more with the stick in. Presets and
+   settings are kept (from 1.2.0 on; an update from 1.1.0 loses them once).
 
 Kit (after testing)
 2. Leave the stick in (or plug it back in; it must be the only stick).

@@ -1,9 +1,9 @@
 #!/system/bin/sh
 # hkg.climate.page postinstall: with the panel stopped, back up the stock panel files, put
-# the APK preinstall rebuilt in place, write its odex and Dalvik cache entry, start our
-# service, then restart the head unit. If anything fails once /system may have changed, the
-# stock files are written back and the panel is started again (NEMESIS does not undo a failed
-# postinstall itself).
+# the APK preinstall rebuilt in place, write its odex and Dalvik cache entry, put back the
+# app settings an update's preuninstall kept, start our service, then restart the head unit.
+# If anything fails once /system may have changed, the stock files are written back and the
+# panel is started again (NEMESIS does not undo a failed postinstall itself).
 #
 # Adapted from HMG Leafia Plus (https://github.com/VysseCodes/HMG-Leafia-Plus) at commit 08f4436.
 # This program is free software: you can redistribute it and/or modify it under the terms of
@@ -85,6 +85,8 @@ sync
 SWAPPING=0
 clean_build
 
+# an update: the settings preuninstall kept, before the app's first run makes an empty file
+restore_settings
 am startservice -n hkgclimate.app/.ClimateService > /dev/null 2>&1 || log "WARN: could not start the climate service"
 release
 retire_usb_descriptor

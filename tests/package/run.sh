@@ -8,8 +8,11 @@
 # failing during postinstall; not enough free space on /data; a postinstall step failing
 # after the new APK is in place, and a signal during the undo that follows; postinstall
 # killed mid-swap; a kept backup with a live APK
-# that is neither stock nor ours; Android down. Also checks the zip's layout
-# and that tools/build-package.sh refuses commands the head unit's shell lacks.
+# that is neither stock nor ours; Android down; the app's settings kept across an update
+# (copied by preuninstall, restored by postinstall only when the app has none, with the data
+# directory's owner and mode 660), and a missing or failing settings copy only logging. Also
+# checks the zip's layout, reading an owner from ls -ldn, and that tools/build-package.sh
+# refuses commands the head unit's shell lacks.
 #
 # Needs private/stock/260507 (app/RightScreenHome.apk, .odex, init.environ.rc), the read-only
 # verified stock files; kit output folders are never used as build input. Without them it
@@ -23,8 +26,10 @@
 # am, settings (one file per key), dexopt (writes the APK's classes.dex as the odex), nemesis
 # (remount rw fails while <case>/remount-rw.fail exists: the test creates it after preinstall,
 # so only postinstall's remount fails), df (free space from MOCK_DF_SYSTEM/MOCK_DF_DATA),
-# md5, chown, restorecon, reboot, and rm (cannot remove the live odex while
-# <case>/rm-odex.fail exists); dexopt kills the hook while <case>/dexopt.kill exists;
+# md5, chown, restorecon, reboot, rm (cannot remove the live odex while
+# <case>/rm-odex.fail exists), cp (copying the app settings file fails while
+# <case>/cp-settings.fail exists) and ls (while <case>/app-owner holds "<uid> <gid>", ls -ldn
+# of the app's data dir prints that owner as the head unit's toolbox ls does); dexopt kills the hook while <case>/dexopt.kill exists;
 # restorecon sends the hook TERM on its second call while <case>/restorecon.kill2 exists;
 # MOCK_ANDROID_DOWN=1 makes sys.boot_completed 0 and am, pm and settings fail; bin/lpatch becomes a wrapper running the real one in qemu.
 #
@@ -117,6 +122,18 @@ check "drop_page4: '1 2,4' -> '1 2'"      test "$(drop4 '1 2,4')" = "1:1 2"
 check "drop_page4: trims, drops empties and every 4" test "$(drop4 ' 4, 0 ,,4 ,21, 3 ')" = "1:0,21,3"
 check "drop_page4: no 4 -> nothing dropped" test "$(drop4 '0,21,3')" = "0:0,21,3"
 check "drop_page4: '*' is not a glob"     test "$(drop4 '*,4')" = "1:*"
+
+# ---- reading the app's owner from ls -ldn (toolbox: mode uid gid date; GNU/busybox: mode
+# links uid gid size)
+owner() {
+    $MOCK_SH -c "$(sed -n '/^owner_of()/,/^}/p' "$ROOT/package/scripts/common.sh")
+owner_of \$1 && echo \"\$OWNER\"" sh "$1"
+}
+check "owner_of: toolbox ls -ldn line"    test "$(owner 'drwxr-x--x 10045    10046             2026-10-31 12:00 hkgclimate.app')" = 10045:10046
+check "owner_of: GNU/busybox ls -ldn line" test "$(owner 'drwxr-x--x 4 10045 10046 4096 Oct 31 12:00 /data/data/hkgclimate.app')" = 10045:10046
+check "owner_of: names (no -n) refused"   fails owner 'drwxr-x--x u0_a45   u0_a45            2026-10-31 12:00 hkgclimate.app'
+check "owner_of: root refused"            fails owner 'drwxr-x--x 0        0                 2026-10-31 12:00 hkgclimate.app'
+check "owner_of: nothing refused"         fails owner ''
 
 # ---- retiring the USB install descriptor (the function alone, its paths moved into $T/usb)
 # retire <descriptor text | -unreadable>: prints the function's log lines, then what is left in usb0
@@ -249,6 +266,31 @@ if [ -e "$MOCK/restorecon.kill2" ]; then
     [ "$(wc -l < "$MOCK/restorecon.count")" -eq 2 ] && kill -TERM "$PPID"
 fi
 exit 0
+E
+stub cp <<'E'
+#!/bin/sh
+# cp-settings.fail: copying the app settings file (either way) fails
+if [ -e "$MOCK/cp-settings.fail" ]; then
+    for _a; do
+        case "$_a" in *hkgclimate.xml*|*hkg.climate.page.settings.xml*) echo "cp: write error" >&2; exit 1 ;; esac
+    done
+fi
+exec /usr/bin/cp "$@"
+E
+stub ls <<'E'
+#!/bin/sh
+# app-owner ("<uid> <gid>"): ls -ldn of the app's data dir prints that owner the way the head
+# unit's toolbox ls does (mode, uid, gid, date, name: no link count, no size)
+if [ "$1" = -ldn ] && [ -e "$MOCK/app-owner" ]; then
+    case "$2" in
+        */data/data/hkgclimate.app)
+            [ -d "$2" ] || { echo "$2: No such file or directory" >&2; exit 1; }
+            read -r _u _g < "$MOCK/app-owner"
+            echo "drwxr-x--x $_u    $_g             2026-10-31 12:00 hkgclimate.app"
+            exit 0 ;;
+    esac
+fi
+exec /usr/bin/ls "$@"
 E
 stub reboot <<'E'
 #!/bin/sh
@@ -478,6 +520,99 @@ check "page lists tried"                  called "settings get system ss_setting
 check "/system byte-identical to before install" sys_same "$X/before.md5"
 check "no backup dir left"                test ! -e "$R/$BAK"
 check "panel enabled"                     panel_enabled
+end_case
+
+# ---- 11 an update keeps the app's settings: preuninstall copies them, NEMESIS's pm uninstall
+# wipes the app's data and pm install makes an empty data dir, postinstall puts them back with
+# the data dir's owner and mode 660 before the service starts
+APPDATA=data/data/hkgclimate.app
+PREFS=$APPDATA/shared_prefs/hkgclimate.xml
+KEPT=data/nemesis/hkg.climate.page.settings.xml
+new_case update-settings
+check "pre.sh exits 0"                    run_pre
+check "post.sh exits 0"                   run_post
+mkdir -p "$R/$APPDATA/shared_prefs"
+echo '<map><string name="presets">Warm|...</string></map>' > "$R/$PREFS"
+cp "$R/$PREFS" "$X/prefs.orig"
+echo "10045 10045" > "$X/app-owner"
+: > "$X/calls.log"
+check "preun.sh exits 0"                  run_preun
+check "settings copied to the NEMESIS folder" cmp "$R/$KEPT" "$X/prefs.orig"
+check "the copy is mode 600"              test "$(stat -c %a "$R/$KEPT")" = 600
+check "log says kept"                     grep -q "^kept the app settings in .*/$KEPT$" "$X/preun.out"
+check "nothing else copied from the app"  test "$(ls "$R/data/nemesis" | grep -c settings)" = 1
+rm -rf "$R/$APPDATA"; mkdir -p "$R/$APPDATA"
+rm -f "$X/rebooted"; : > "$X/calls.log"
+check "pre.sh exits 0 (update)"           run_pre
+check "post.sh exits 0 (update)"          run_post
+check "settings restored"                 cmp "$R/$PREFS" "$X/prefs.orig"
+check "restored file is mode 660"         test "$(stat -c %a "$R/$PREFS")" = 660
+check "restored file owned by the data dir's owner" grep -qE "^chown 10045[:.]10045 .*/$PREFS" "$X/calls.log"
+check "shared_prefs made with that owner" grep -qE "^chown 10045[:.]10045 .*/$APPDATA/shared_prefs$" "$X/calls.log"
+check "shared_prefs is mode 771"          test "$(stat -c %a "$R/$APPDATA/shared_prefs")" = 771
+check "restored before the service starts" \
+    sh -c "test \"\$(grep -nE -m1 'chown .*hkgclimate.xml' '$X/calls.log' | cut -d: -f1)\" -lt \"\$(grep -n -m1 'am startservice' '$X/calls.log' | cut -d: -f1)\""
+check "log says restored"                 grep -q "^restored the app settings from .*/$KEPT" "$X/post.out"
+check "no temp file left in shared_prefs" test "$(ls "$R/$APPDATA/shared_prefs")" = hkgclimate.xml
+check "ClimateService started"            called "am startservice -n hkgclimate.app/.ClimateService"
+check "reboot requested"                  test -e "$X/rebooted"
+end_case
+
+# ---- 12 the freshly installed app already has a settings file: it is left alone
+new_case settings-existing
+mkdir -p "$R/$APPDATA/shared_prefs" "$R/data/nemesis"
+echo '<map>new</map>' > "$R/$PREFS"; echo '<map>old</map>' > "$R/$KEPT"
+echo "10045 10045" > "$X/app-owner"
+check "pre.sh exits 0"                    run_pre
+check "post.sh exits 0"                   run_post
+check "the app's own settings unchanged"  test "$(cat "$R/$PREFS")" = '<map>new</map>'
+check "not chowned"                       not_called "hkgclimate.xml"
+check "log says left alone"               grep -q "the app has its own settings - not restoring" "$X/post.out"
+check "ClimateService started"            called "am startservice -n hkgclimate.app/.ClimateService"
+end_case
+
+# ---- 13 nothing to keep or restore, or no data dir to take the owner from: logged, no failure
+new_case settings-missing
+mkdir -p "$R/$APPDATA"
+check "pre.sh exits 0"                    run_pre
+check "post.sh exits 0 (no copy)"         run_post
+check "log says no copy"                  grep -q "^no kept app settings to restore$" "$X/post.out"
+check "no settings file made"             test ! -e "$R/$APPDATA/shared_prefs"
+check "ClimateService started"            called "am startservice -n hkgclimate.app/.ClimateService"
+check "preun.sh exits 0 (no app settings)" run_preun
+check "log says nothing to keep"          grep -q "^no app settings to keep$" "$X/preun.out"
+check "no copy made"                      test ! -e "$R/$KEPT"
+rm -rf "$R/$APPDATA"; echo '<map>old</map>' > "$R/$KEPT"
+rm -f "$X/rebooted"; : > "$X/calls.log"
+check "pre.sh exits 0 (no data dir)"      run_pre
+check "post.sh exits 0 (no data dir)"     run_post
+check "log warns, copy kept"              grep -q "^WARN: cannot read the owner of .*/$APPDATA - settings not restored" "$X/post.out"
+check "the copy is still there"           test "$(cat "$R/$KEPT")" = '<map>old</map>'
+check "no data dir made"                  test ! -e "$R/$APPDATA"
+check "ClimateService started"            called "am startservice -n hkgclimate.app/.ClimateService"
+check "reboot requested"                  test -e "$X/rebooted"
+end_case
+
+# ---- 14 copying the settings fails both ways: logged, the hooks carry on
+new_case settings-cp-fail
+check "pre.sh exits 0"                    run_pre
+check "post.sh exits 0"                   run_post
+mkdir -p "$R/$APPDATA/shared_prefs"; echo '<map>mine</map>' > "$R/$PREFS"
+echo "10045 10045" > "$X/app-owner"
+: > "$X/cp-settings.fail"; : > "$X/calls.log"
+check "preun.sh exits 0"                  run_preun
+check "log warns"                         grep -q "^WARN: could not keep the app settings" "$X/preun.out"
+check "no copy or temp file left"         test "$(ls "$R/data/nemesis" | grep -c settings)" = 0
+check "/system byte-identical to before install" sys_same "$X/before.md5"
+rm -rf "$R/$APPDATA"; mkdir -p "$R/$APPDATA"; echo '<map>old</map>' > "$R/$KEPT"
+rm -f "$X/rebooted"; : > "$X/calls.log"
+check "pre.sh exits 0 (update)"           run_pre
+check "post.sh exits 0 (update)"          run_post
+check "log warns"                         grep -q "^WARN: could not restore the app settings" "$X/post.out"
+check "no settings or temp file left"     test -z "$(ls "$R/$APPDATA/shared_prefs" 2>/dev/null)"
+check "the copy is still there"           test "$(cat "$R/$KEPT")" = '<map>old</map>'
+check "ClimateService started"            called "am startservice -n hkgclimate.app/.ClimateService"
+check "reboot requested"                  test -e "$X/rebooted"
 end_case
 
 if [ $FAILS -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi

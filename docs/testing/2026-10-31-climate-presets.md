@@ -17,10 +17,13 @@ open settings, or as a retry: only a tap on a preset (or a seat button) sends.
 
 ## Steps
 
-1. Install 1.1.0 from the combined stick. If the install says there isn't enough space on
-   /system, restart the head unit and plug the stick in again (the update has to finish
-   removing the old build first). Check that your old presets are still there (their new
-   items read "Leave as is").
+1. Install 1.1.0 from the combined stick. NEMESIS won't install over the build that's on the
+   car while the head unit is running (dismiss its message): plug the stick in and restart
+   the head unit with the stick still in. NEMESIS updates while the head unit starts, then
+   restarts it once more. If the climate page is missing after that, restart once more with
+   the stick in (the update has to finish removing the old build first). Or uninstall in
+   NEMESIS, restart, and install. The update reinstalls the app, which clears its settings:
+   your old presets may be gone (that's expected for this version; add them again).
 2. The app holds four presets, and this test uses all four. In the Climate Page settings,
    delete every old preset (Delete asks first) so that all four slots are free.
    Then tap to add a preset and look at the editor: every item is a dropdown. Set Climate to
