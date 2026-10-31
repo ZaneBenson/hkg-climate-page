@@ -6,14 +6,19 @@ switch temperature, cooling above it), the outside temperature, and preset butto
 apply several climate settings at once. A small settings app sets the switch temperature
 and builds the presets.
 
-**Status: version 1.2.0 on branch `version-1-2` (not merged): presets land reliably (commands
+![The climate page on the right split screen, beside Android Auto](docs/images/panel-in-car.jpg)
+
+| The page up close | The settings app beside the page |
+|---|---|
+| ![Seat buttons in heat mode with swap buttons, and the Cold and Hot presets](docs/images/panel-close-up.jpg) | ![Climate Page settings on the left with the page on the right](docs/images/settings-beside-panel.jpg) |
+
+**Status: release v1.2.0, running on the owner's car (2026-10-31): presets land reliably (commands
 spaced out, and a temperature or fan step the car missed is pressed again, at most twice), Save
 no longer crashes, every editor dropdown scrolls, a preset sets the driver and passenger
 temperatures separately, up to six presets, the preset in effect is highlighted, a redesigned
 panel (gear button, seat icons that show the mode, swap and off buttons), and presets and
-settings are kept across updates.** Built, not yet tried on the car. Version 1.1.0 (climate
-presets) was tried on the car on 2026-10-31; release v1.0.0 (seat buttons, outside temperature
-and presets of the seats) was the previous public release.
+settings are kept across updates.** Install from the GitHub release (`hkg-climate-usb.zip`).
+Earlier releases: v1.0.0 (seat buttons, outside temperature and presets of the seats).
 The owner's on-car checklist is
 [docs/testing/2026-10-31-version-1-2.md](docs/testing/2026-10-31-version-1-2.md). Earlier checklists:
 [climate presets (1.1.0)](docs/testing/2026-10-31-climate-presets.md),

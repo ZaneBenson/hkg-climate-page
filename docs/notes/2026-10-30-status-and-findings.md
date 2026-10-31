@@ -21,8 +21,8 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Plan 4 (version 1: owner's layout changes, taps always send, install message for low /system space) | Built (1.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-version-1.md`. |
 | Plan 5 (version 2: presets of the seat settings, up to 4, applied from the page) | Built, released as v1.0.0 (versionCode 4; planned as 2.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-presets.md`. |
 | Plan 6 (climate presets: steering wheel, eco, climate off/auto/manual, temperature, fan, A/C, airflow and sync in a preset; dropdown editor; checked save) | Built (1.1.0, versionCode 5), tried on the owner's car (2026-10-31; what it showed is in `docs/superpowers/specs/2026-10-31-version-1-2-design.md`). The commands are the owner-approved set under "Climate preset commands". Checklist: `docs/testing/2026-10-31-climate-presets.md`. |
-| Plan 7 (version 1.2: command spacing and retries, Save without a crash, scrollable dropdowns, driver and passenger temperatures, six presets, applied-preset highlight, redesigned panel, settings kept across updates) | Built (1.2.0, versionCode 6), not yet on the car. Plan: `docs/superpowers/plans/2026-10-31-version-1-2.md`. Checklist: `docs/testing/2026-10-31-version-1-2.md`. |
-| Branches | Version 1 and presets merged into `main` (2026-10-30). The climate presets work (1.1.0) is on branch `climate-presets`, not merged. Version 1.2 (1.2.0) is on branch `version-1-2`, not merged. |
+| Plan 7 (version 1.2: command spacing and retries, Save without a crash, scrollable dropdowns, driver and passenger temperatures, six presets, applied-preset highlight, redesigned panel, settings kept across updates) | Built (1.2.0, versionCode 6); runs on the owner's car (2026-10-31); released as v1.2.0. Plan: `docs/superpowers/plans/2026-10-31-version-1-2.md`. Checklist: `docs/testing/2026-10-31-version-1-2.md`. |
+| Branches | Everything through version 1.2 (1.2.0) is merged into `main` (2026-10-31). |
 
 ## Seat command approval (2026-10-30)
 
