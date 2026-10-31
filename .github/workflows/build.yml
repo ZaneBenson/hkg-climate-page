@@ -68,6 +68,7 @@ jobs:
           sh tests/panel/check-page.sh
           (eval "$(tools/toolchain.sh env)" && python3 -m unittest -v tests/panel/test_patch_panel.py)
           sh tests/kit/run.sh
+          sh tests/capture/run.sh
 
       - name: Release signing key
         if: env.RELEASE == 'true'
@@ -93,6 +94,7 @@ jobs:
           [ "$rc" = 0 ] || [ "$rc" = 2 ] # 2: SKIP, no stock files on the runner
           tools/build-kit.sh
           tools/build-usb.sh
+          tools/build-capture.sh
           sh tests/usb/run.sh
 
       - name: Remove the signing key

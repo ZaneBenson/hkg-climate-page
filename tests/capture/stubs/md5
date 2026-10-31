@@ -1,0 +1,7 @@
+#!/bin/sh
+# toolbox md5 prints "<hash>  <file>"; the defaults are the owner's stock framework files
+case "$1" in
+    */automotive.odex) echo "${FAKE_MD5_ODEX-85f94dc6b9f7b331b8edcb0ec2183261}  $1" ;;
+    */automotive-service.odex) echo "${FAKE_MD5_SVC-23e123f1cc296943b32391a70b2f20f5}  $1" ;;
+    *) md5sum "$@" ;;
+esac

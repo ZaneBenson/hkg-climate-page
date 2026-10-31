@@ -1,0 +1,3 @@
+#!/bin/sh
+# log -t <tag> <message>
+echo "log $*" >> "${FAKE_LOG_LOG:-/dev/null}"

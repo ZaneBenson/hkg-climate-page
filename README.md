@@ -36,6 +36,10 @@ Then:
    the package plus the read-only kit on one USB stick; the install runs on insert, the kit
    from NEMESIS Manager's "Run USB NEMESIS.sh")
 
+`tools/build-capture.sh` writes `dist/hkg-climate-capture.zip`, a read-only tool that records the
+Android log on a USB stick while the stock climate controls are used (checklist:
+[docs/testing/2026-10-31-climate-capture.md](docs/testing/2026-10-31-climate-capture.md)).
+
 The first `build-app.sh` run creates the signing key in `private/keys/`: back it up. The panel
 patch files are committed, so `tools/build-panel.sh` is not needed to package.
 
