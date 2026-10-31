@@ -1,7 +1,7 @@
 [nemesis]
 id=hkg.climate.page
 name=HKG Climate Page
-version=2.0.0
+version=1.0.0
 preinstall=scripts/pre.sh
 postinstall=scripts/post.sh
 preuninstall=scripts/preun.sh

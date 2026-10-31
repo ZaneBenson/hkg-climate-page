@@ -6,7 +6,7 @@ switch temperature, cooling above it), the outside temperature, and preset butto
 apply several climate settings at once. A small settings app sets the switch temperature
 and builds the presets.
 
-**Status: version 2: presets of the seat settings; install from dist/hkg-climate-usb.zip.**
+**Status: release v1.0.0: seat buttons, outside temperature and presets of the seat settings; install from dist/hkg-climate-usb.zip or the GitHub release.**
 Built, not yet tried on the car. The owner's on-car checklist is
 [docs/testing/2026-10-30-presets.md](docs/testing/2026-10-30-presets.md). Earlier checklists:
 [version 1](docs/testing/2026-10-30-version-1.md),
@@ -44,7 +44,7 @@ zips as a build artifact. The package mock test needs the stock panel files, so 
 
 - Branches and pull requests are signed with a throwaway key made on each run, so their zips
   can't update an install signed with the release key. Use them to check the build only.
-- Tags `v<version>` (for example `v2.0.0`) are signed with the release key from the repository
+- Tags `v<version>` (for example `v1.0.0`) are signed with the release key from the repository
   secrets `HKGCLIMATE_KEYSTORE_B64` (the keystore, base64; alias `hkgclimate`) and
   `HKGCLIMATE_KEYSTORE_PASSWORD`. The tag must match the version in `app/AndroidManifest.xml`
   and `package/NEMESIS.data`, and the zips are attached to the GitHub release for the tag.

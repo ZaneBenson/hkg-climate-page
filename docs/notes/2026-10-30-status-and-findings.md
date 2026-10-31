@@ -19,7 +19,7 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Seat command | Approved by the owner on 2026-10-30 (see "Seat command approval"). Sent by version 1 on each seat tap (no approval switch). |
 | Plan 3 (test build 2: approved seat command behind an approval switch) | Installed and tested on the owner's car (2026-10-30): seat taps change both seats through heat and cool. |
 | Plan 4 (version 1: owner's layout changes, taps always send, install message for low /system space) | Built (1.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-version-1.md`. |
-| Plan 5 (version 2: presets of the seat settings, up to 4, applied from the page) | Built (2.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-presets.md`. |
+| Plan 5 (version 2: presets of the seat settings, up to 4, applied from the page) | Built, released as v1.0.0 (versionCode 4; planned as 2.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-presets.md`. |
 | Branches | Version 1 and presets merged into `main` (2026-10-30). |
 
 ## Seat command approval (2026-10-30)

@@ -288,7 +288,7 @@ check "self-test: the seat-call check fails a listing with no seat call" \
     send_none_fails "$ST/caller/code.txt"
 
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
-check "versionName is 2.0.0" grep -q "versionName='2.0.0'" "$TMP/badging"
+check "versionName is 1.0.0" grep -q "versionName='1.0.0'" "$TMP/badging"
 check "versionCode is 4" grep -q "versionCode='4'" "$TMP/badging"
 # the approval flow is gone: no commander class, no dialog, no preference key
 check "dex has no TestModeCommander class" sh -c "! grep -q 'Lhkgclimate/app/TestModeCommander;' $TMP/dex.txt"

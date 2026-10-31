@@ -4,7 +4,7 @@
 # - Branches and pull requests: the APK is signed with a throwaway key made fresh on each run
 #   (build-app.sh creates one when private/keys is empty). Those zips can't update an install
 #   signed with the release key; they are for checking the build only.
-# - Tags v<version> (for example v2.0.0): the APK is signed with the release key from the
+# - Tags v<version> (for example v1.0.0): the APK is signed with the release key from the
 #   repository secrets HKGCLIMATE_KEYSTORE_B64 (the JKS keystore, base64; alias hkgclimate) and
 #   HKGCLIMATE_KEYSTORE_PASSWORD, the tag must match the version in app/AndroidManifest.xml and
 #   package/NEMESIS.data, and the zips are attached to the GitHub release for the tag.
