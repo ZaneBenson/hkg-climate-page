@@ -13,15 +13,22 @@ public final class PageState {
     /** 1 the seat's next tap heats, 2 it cools, 0 the seat is unavailable. */
     public final int[] seatTapKind;
     public final boolean[] seatEnabled;
+    /** Always 4 entries: the name of the preset in each slot, null for an empty slot. */
+    public final String[] presetNames;
+    /** Always 4 entries: true when the slot has a preset and the seats are ready. */
+    public final boolean[] presetEnabled;
 
     public PageState(String top, String[] seatText, int[] seatLevel, int[] seatKind,
-            int[] seatTapKind, boolean[] seatEnabled) {
+            int[] seatTapKind, boolean[] seatEnabled, String[] presetNames,
+            boolean[] presetEnabled) {
         this.top = top;
         this.seatText = seatText;
         this.seatLevel = seatLevel;
         this.seatKind = seatKind;
         this.seatTapKind = seatTapKind;
         this.seatEnabled = seatEnabled;
+        this.presetNames = presetNames;
+        this.presetEnabled = presetEnabled;
     }
 
     @Override
@@ -34,7 +41,9 @@ public final class PageState {
                 && Arrays.equals(seatLevel, p.seatLevel)
                 && Arrays.equals(seatKind, p.seatKind)
                 && Arrays.equals(seatTapKind, p.seatTapKind)
-                && Arrays.equals(seatEnabled, p.seatEnabled);
+                && Arrays.equals(seatEnabled, p.seatEnabled)
+                && Arrays.equals(presetNames, p.presetNames)
+                && Arrays.equals(presetEnabled, p.presetEnabled);
     }
 
     @Override
@@ -44,6 +53,8 @@ public final class PageState {
         h = 31 * h + Arrays.hashCode(seatLevel);
         h = 31 * h + Arrays.hashCode(seatKind);
         h = 31 * h + Arrays.hashCode(seatTapKind);
-        return 31 * h + Arrays.hashCode(seatEnabled);
+        h = 31 * h + Arrays.hashCode(seatEnabled);
+        h = 31 * h + Arrays.hashCode(presetNames);
+        return 31 * h + Arrays.hashCode(presetEnabled);
     }
 }

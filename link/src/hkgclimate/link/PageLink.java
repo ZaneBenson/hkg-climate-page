@@ -11,6 +11,7 @@ import android.os.IBinder;
  *   TX_SUBSCRIBE   in: IBinder callback
  *   TX_UNSUBSCRIBE in: IBinder callback
  *   TX_TAP         in: int seat (0 driver, 1 passenger), long requestId; sent FLAG_ONEWAY
+ *   TX_PRESET      in: int index (preset slot, 0 to 3), long requestId; sent FLAG_ONEWAY
  * Service to page (descriptor {@link #CALLBACK_DESCRIPTOR}):
  *   CB_STATE       in: Bundle with the K_ keys below; FLAG_ONEWAY
  */
@@ -23,6 +24,7 @@ public final class PageLink {
     public static final int TX_SUBSCRIBE = IBinder.FIRST_CALL_TRANSACTION;
     public static final int TX_UNSUBSCRIBE = IBinder.FIRST_CALL_TRANSACTION + 1;
     public static final int TX_TAP = IBinder.FIRST_CALL_TRANSACTION + 2;
+    public static final int TX_PRESET = IBinder.FIRST_CALL_TRANSACTION + 3;
 
     public static final int CB_STATE = IBinder.FIRST_CALL_TRANSACTION;
 
@@ -42,6 +44,10 @@ public final class PageLink {
     public static final String K_SEAT_ENABLED = "seatEnabled";
     /** int[], index 0 driver: what the seat's next tap does (1 heats, 2 cools, 0 unavailable). */
     public static final String K_SEAT_TAP_KIND = "seatTapKind";
+    /** String[4]: the name of the preset in each slot, null for an empty slot. */
+    public static final String K_PRESET_NAMES = "presetNames";
+    /** boolean[4]: whether tapping the slot's preset is allowed. */
+    public static final String K_PRESET_ENABLED = "presetEnabled";
     /** Bundle of raw values; read by the settings screen only. */
     public static final String K_DEBUG = "debug";
 }

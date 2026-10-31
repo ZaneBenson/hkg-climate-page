@@ -1,8 +1,12 @@
 package hkgclimate.core;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * What the climate page knows and what a tap does. Single-threaded: call everything from the
- * main looper. Feeding it state never sends a command; only onTap does, once per request id.
+ * main looper. Feeding it state or presets never sends a command; only onTap and onPresetTap do,
+ * once per request id.
  */
 public final class ClimateCore {
     private static final int SEATS = Seat.values().length;
@@ -14,6 +18,7 @@ public final class ClimateCore {
     private final TapGate gate = new TapGate();
     private final int[] seatValue = new int[SEATS];
     private final int[] seatOption = new int[SEATS];
+    private List<Preset> presets = new ArrayList<Preset>();
 
     private int switchTempF;
     private boolean ready;
@@ -64,6 +69,43 @@ public final class ClimateCore {
         return true;
     }
 
+    /** Replaces the saved presets (null is none); only the first PresetList.MAX are kept. */
+    public void setPresets(List<Preset> list) {
+        List<Preset> copy = new ArrayList<Preset>();
+        if (list != null) {
+            for (Preset p : list) {
+                if (p != null && copy.size() < PresetList.MAX) copy.add(p);
+            }
+        }
+        presets = copy;
+        changed();
+    }
+
+    /**
+     * Applies the preset in slot index: for the driver, then the passenger, one command for each
+     * seat that has a target, is in a state we know, is not already at the target, and, for a
+     * cool target, has the heat and cool option. Returns how many commands were sent; 0 for a
+     * request id seen before, a bad or empty slot, or seats that are not ready.
+     */
+    public int onPresetTap(int index, long requestId) {
+        if (!gate.accept(requestId)) return 0;
+        if (!ready) return 0;
+        if (index < 0 || index >= presets.size()) return 0;
+        Preset p = presets.get(index);
+        int sent = 0;
+        for (Seat s : Seat.values()) {
+            int i = s.ordinal();
+            int target = p.target(s);
+            if (target == Preset.LEAVE || !SeatValues.isKnown(target)) continue;
+            if (!SeatValues.isKnown(seatValue[i]) || seatValue[i] == target) continue;
+            if (SeatValues.modeOf(target) == Mode.COOL
+                    && seatOption[i] != SeatValues.HEAT_AND_COOL_OPTION) continue;
+            sender.set(s, target);
+            sent++;
+        }
+        return sent;
+    }
+
     public PageState pageState() { return build(); }
 
     private Mode currentMode(Seat s) {
@@ -107,6 +149,12 @@ public final class ClimateCore {
         }
         String temp = outside.display(displayUnit);
         String top = temp == null ? "Outside temperature unknown" : "Outside " + temp;
-        return new PageState(top, text, level, kind, tapKind, enabled);
+        String[] presetNames = new String[PresetList.MAX];
+        boolean[] presetEnabled = new boolean[PresetList.MAX];
+        for (int i = 0; i < presets.size() && i < PresetList.MAX; i++) {
+            presetNames[i] = presets.get(i).name;
+            presetEnabled[i] = ready;
+        }
+        return new PageState(top, text, level, kind, tapKind, enabled, presetNames, presetEnabled);
     }
 }
