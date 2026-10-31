@@ -63,7 +63,10 @@ To release: set the version in both files, commit, then `git tag v<version>` and
 
 Target car: 2023 US Hyundai Ioniq 5 (`NEEV23.USA.`, firmware 260507).
 
-- Design: [docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md](docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md)
+- Commands and settings found so far, for the community:
+  [docs/community/gen5w-climate-commands.md](docs/community/gen5w-climate-commands.md)
+- Design: [docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md](docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md);
+  climate presets: [docs/superpowers/specs/2026-10-31-climate-presets-design.md](docs/superpowers/specs/2026-10-31-climate-presets-design.md)
 - Current plan: [docs/superpowers/plans/2026-10-30-presets.md](docs/superpowers/plans/2026-10-30-presets.md)
 
 Licence: GPL-3.0 (see `LICENSE`). Credits: `NOTICE.md`.

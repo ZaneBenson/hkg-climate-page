@@ -42,6 +42,47 @@ The owner approved this command for the sending build:
   join, a preset may send one command for each setting it includes; the order is not
   important to the owner. Each new setting still needs its own log and approval first.
 
+## Climate preset commands (2026-10-31)
+
+**Status: awaiting the owner's approval.** Written from captures 1 and 2 of the stock controls on
+the owner's car (2026-10-31; analyses in `private/work/climate-research/`). The owner chose to
+approve this write-up instead of a log-only first build. Until the owner approves it here, no
+build sends these.
+
+- **Caller:** our app `hkgclimate.app` (an ordinary app uid), only in response to a tap on a
+  preset. Stock callers seen: the climate app (DATC and steering wheel) and Vehicle Settings,
+  uid 1000 (eco). USM already accepts our uid (seats); DATC from our uid is untested (the stock
+  code shows no uid or permission check). Fallback if refused: a NEMESIS helper calling the same
+  service as the system uid, in a later build.
+- **Climate (DATC):** stock `com.hkmc.datc.DATCManager.setFrontClimateControl(int flag, int value)`
+  -> binder `com.hkmc.micom.datc`, transaction 0x41. Only these flag/value pairs, each seen sent
+  by the stock climate screen:
+
+  | Item | Flag | Values |
+  |---|---|---|
+  | Driver temperature, one step | 50 | 1 up, 2 down |
+  | Passenger temperature, one step | 49 | 1 up, 2 down |
+  | Fan speed, one step | 4 | 1 up, 2 down |
+  | Climate off | 51 | 1 |
+  | Climate auto | 8 | 1 |
+  | A/C | 9 | 0 off, 1 on |
+  | Airflow | 6 | 1 face, 2 face and floor, 3 floor, 4 floor and defrost |
+  | Sync | 22 | 2 to turn it on (sent only when off), 1 to turn it off (sent only when on) |
+
+  Never sent: any other flag (including the housekeeping flag 32 and the `HU_VRActivity` frame)
+  or value; the absolute temperature (28-31) and fan (5) flags; driver-only (24); HEAT (48).
+- **Steering-wheel heat (USM):** stock `com.hkmc.usm.USMManager.setSWRC_SteeringwheelWarmerSet(int)`
+  -> binder `com.hkmc.micom.usm`, transaction 0xd4. A press is 1 then 0, as the stock button
+  sends on touch down and up; sent only when the wheel's state (`getSWRC_SteeringwheelHeatIndStep2`,
+  1 on / 0 off) differs from the preset.
+- **Eco mode (USM):** stock `USMManager.setClimateControlECOMode(int)` -> binder
+  `com.hkmc.micom.usm`, transaction 0xc2 (frame `USM_Seat_ETC_C_REQ` 0x1122 `[1, v]`). Values 2
+  on, 1 off (this car's CAN-DB generation is 2), sent only when `getClimateControlECOMode()`
+  (1 on / 0 off) differs.
+- **Gate:** at most one press at a time for stepped items, each decided from the car's reported
+  value, with a cap per item; nothing at boot, on state changes, on settings changes, or as a
+  retry; nothing for an item whose state is unknown; firmware 260507 only.
+
 ## Design summary
 
 - A page on the right-side split screen (page id 4), reached by swiping like the stock
