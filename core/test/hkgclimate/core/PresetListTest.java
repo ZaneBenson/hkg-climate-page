@@ -64,7 +64,9 @@ public class PresetListTest {
     public void codecRoundTrips() {
         List<Preset> in = Arrays.asList(new Preset("Cold", 8, 8), new Preset("Warm", 5, Preset.LEAVE),
                 new Preset("Off", 2, 2));
-        assertEquals("Cold\t8\t8\nWarm\t5\t-1\nOff\t2\t2\n", PresetList.encode(in));
+        assertEquals("Cold\t8\t8\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n"
+                + "Warm\t5\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n"
+                + "Off\t2\t2\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n", PresetList.encode(in));
         assertEquals(in, PresetList.decode(PresetList.encode(in)));
     }
 
@@ -114,7 +116,8 @@ public class PresetListTest {
     public void encodeDropsInvalidPresetsAndExtras() {
         List<Preset> in = Arrays.asList(new Preset("ok", 8, 8), new Preset("a\tb", 8, 8),
                 new Preset("", 8, 8), new Preset("none", -1, -1), new Preset("c", 2, 2));
-        assertEquals("ok\t8\t8\nc\t2\t2\n", PresetList.encode(in));
+        assertEquals("ok\t8\t8\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n"
+                + "c\t2\t2\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n", PresetList.encode(in));
         assertEquals(4, PresetList.decode(PresetList.encode(list("a", "b", "c", "d", "e"))).size());
     }
 
@@ -157,5 +160,57 @@ public class PresetListTest {
         assertEquals("a,b,c,", names(PresetList.moveDown(in, 2)));
         assertEquals("a,b,c,", names(PresetList.moveDown(in, 5)));
         assertEquals("a,b,c,", names(PresetList.moveUp(in, -1)));
+    }
+
+    private static final String NONE = "\t-1\t-1\t-1\t-1\t-1\t-1\t-1\t-1";
+
+    @Test
+    public void oldThreeFieldLineLoadsWithEveryNewItemLeftAndSavesInTheNewFormat() {
+        List<Preset> loaded = PresetList.decode("Cold\t8\t5\nWarm\t-1\t3\n");
+        assertEquals(2, loaded.size());
+        Preset cold = loaded.get(0);
+        assertEquals(8, cold.driver);
+        assertEquals(5, cold.passenger);
+        for (int v : new int[] {cold.wheel, cold.eco, cold.climate, cold.tempF, cold.fan, cold.ac,
+                cold.airflow, cold.sync}) {
+            assertEquals(Preset.LEAVE, v);
+        }
+        String saved = PresetList.encode(loaded);
+        assertEquals("Cold\t8\t5" + NONE + "\nWarm\t-1\t3" + NONE + "\n", saved);
+        assertEquals(loaded, PresetList.decode(saved));
+    }
+
+    @Test
+    public void elevenFieldLineRoundTrips() {
+        Preset full = new Preset("Cold", 8, 8, 1, 0, Preset.CLIMATE_MANUAL, 70, 3, 1, 2, 1);
+        String line = "Cold\t8\t8\t1\t0\t3\t70\t3\t1\t2\t1\n";
+        assertEquals(line, PresetList.encode(Arrays.asList(full)));
+        assertEquals(Arrays.asList(full), PresetList.decode(line));
+        Preset climateOnly = new Preset("Auto", -1, -1, -1, -1, Preset.CLIMATE_AUTO, 64, -1, -1, -1, 1);
+        assertEquals(Arrays.asList(climateOnly), PresetList.decode(PresetList.encode(Arrays.asList(climateOnly))));
+    }
+
+    @Test
+    public void decodeSkipsLinesWithOtherFieldCounts() {
+        assertTrue(PresetList.decode("x\t8\t5\t-1\n").isEmpty());
+        assertTrue(PresetList.decode("x\t8\t5" + NONE + "\t-1\n").isEmpty());
+        assertTrue(PresetList.decode("x\t8\t5\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n").isEmpty());
+    }
+
+    @Test
+    public void decodeSkipsElevenFieldLinesThatDoNotCheck() {
+        assertTrue(PresetList.decode("x\t8\t5\t2\t-1\t-1\t-1\t-1\t-1\t-1\t-1\n").isEmpty());
+        assertTrue(PresetList.decode("x\t8\t5\t-1\t-1\t-1\t83\t-1\t-1\t-1\t-1\n").isEmpty());
+        assertTrue(PresetList.decode("x\t-1\t-1" + NONE + "\n").isEmpty());
+        assertTrue(PresetList.decode("x\t8\t5\t-1\t-1\t3\t70\t-1\t-1\t-1\t-1\n").isEmpty());
+        assertTrue(PresetList.decode("x\t8\t5\t-1\t-1\t-1\tabc\t-1\t-1\t-1\t-1\n").isEmpty());
+    }
+
+    @Test
+    public void autoAndOffLinesDropTheirGreyedItemsOnLoad() {
+        Preset auto = PresetList.decode("a\t-1\t-1\t-1\t-1\t2\t70\t5\t1\t3\t1\n").get(0);
+        assertEquals(new Preset("a", -1, -1, -1, -1, Preset.CLIMATE_AUTO, 70, -1, -1, -1, 1), auto);
+        Preset off = PresetList.decode("o\t-1\t-1\t1\t-1\t1\t70\t5\t1\t3\t1\n").get(0);
+        assertEquals(new Preset("o", -1, -1, 1, -1, Preset.CLIMATE_OFF, -1, -1, -1, -1, -1), off);
     }
 }

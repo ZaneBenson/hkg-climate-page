@@ -1,15 +1,19 @@
 package hkgclimate.core;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
- * The saved presets as text (one line per preset: name, tab, driver, tab, passenger) and the
- * edits on a list. Nothing is escaped: a name with a tab or line break is not a valid preset.
+ * The saved presets as text and the edits on a list. A line has 11 tab-separated fields: name,
+ * driver, passenger, wheel, eco, climate, temperature (F), fan, A/C, airflow, sync. Lines of the
+ * first format (name, driver, passenger) are still read, with every other item left as is.
+ * Nothing is escaped: a name with a tab or line break is not a valid preset.
  * Every edit returns a new list and leaves its input alone.
  */
 public final class PresetList {
     public static final int MAX = 4;
+    private static final int FIELDS = 11;
 
     private PresetList() { }
 
@@ -20,8 +24,12 @@ public final class PresetList {
         int n = 0;
         for (Preset p : presets) {
             if (p == null || n >= MAX) continue;
-            if (Preset.check(p.name, p.driver, p.passenger) != null) continue;
-            b.append(p.name).append('\t').append(p.driver).append('\t').append(p.passenger).append('\n');
+            if (Preset.check(p) != null) continue;
+            int[] v = {p.driver, p.passenger, p.wheel, p.eco, p.climate, p.tempF, p.fan, p.ac,
+                    p.airflow, p.sync};
+            b.append(p.name);
+            for (int x : v) b.append('\t').append(x);
+            b.append('\n');
             n++;
         }
         return b.toString();
@@ -36,17 +44,19 @@ public final class PresetList {
             String line = raw.endsWith("\r") ? raw.substring(0, raw.length() - 1) : raw;
             if (line.length() == 0) continue;
             String[] f = line.split("\t", -1);
-            if (f.length != 3) continue;
-            int d;
-            int p;
+            if (f.length != 3 && f.length != FIELDS) continue;
+            // the Preset trims its name, which would hide a stray carriage return at either end
+            if (f[0].indexOf('\r') >= 0) continue;
+            int[] v = new int[FIELDS - 1];
+            Arrays.fill(v, Preset.LEAVE);
             try {
-                d = Integer.parseInt(f[1]);
-                p = Integer.parseInt(f[2]);
+                for (int k = 1; k < f.length; k++) v[k - 1] = Integer.parseInt(f[k]);
             } catch (NumberFormatException e) {
                 continue;
             }
-            if (Preset.check(f[0], d, p) != null) continue;
-            out.add(new Preset(f[0], d, p));
+            Preset p = new Preset(f[0], v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
+            if (Preset.check(p) != null) continue;
+            out.add(p);
         }
         return out;
     }

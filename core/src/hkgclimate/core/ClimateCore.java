@@ -94,7 +94,7 @@ public final class ClimateCore {
         if (index < 0 || index >= presets.size()) return 0;
         Preset p = presets.get(index);
         // a preset that does not check (built by hand, not through the editor) sends nothing at all
-        if (Preset.check(p.name, p.driver, p.passenger) != null) return 0;
+        if (Preset.check(p) != null) return 0;
         int sent = 0;
         for (Seat s : Seat.values()) {
             int i = s.ordinal();
