@@ -6,9 +6,10 @@ switch temperature, cooling above it), the outside temperature, and preset butto
 apply several climate settings at once. A small settings app sets the switch temperature
 and builds the presets.
 
-**Status: version 1: seat buttons send the approved command; install from dist/hkg-climate-usb.zip.**
+**Status: version 2: presets of the seat settings; install from dist/hkg-climate-usb.zip.**
 Built, not yet tried on the car. The owner's on-car checklist is
-[docs/testing/2026-10-30-version-1.md](docs/testing/2026-10-30-version-1.md). Earlier checklists:
+[docs/testing/2026-10-30-presets.md](docs/testing/2026-10-30-presets.md). Earlier checklists:
+[version 1](docs/testing/2026-10-30-version-1.md),
 [test build 2](docs/testing/2026-10-30-test-build-2.md),
 [test build 1](docs/testing/2026-10-30-test-build-1.md).
 
@@ -43,6 +44,6 @@ patch files are committed, so `tools/build-panel.sh` is not needed to package.
 Target car: 2023 US Hyundai Ioniq 5 (`NEEV23.USA.`, firmware 260507).
 
 - Design: [docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md](docs/superpowers/specs/2026-10-30-hkg-climate-page-design.md)
-- Current plan: [docs/superpowers/plans/2026-10-30-version-1.md](docs/superpowers/plans/2026-10-30-version-1.md)
+- Current plan: [docs/superpowers/plans/2026-10-30-presets.md](docs/superpowers/plans/2026-10-30-presets.md)
 
 Licence: GPL-3.0 (see `LICENSE`). Credits: `NOTICE.md`.

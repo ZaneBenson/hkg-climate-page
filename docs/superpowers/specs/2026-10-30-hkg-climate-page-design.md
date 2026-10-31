@@ -25,7 +25,7 @@ a cold or hot morning means many separate taps. The owner wants:
   - top line: the outside temperature ("Outside 48 °F"); *(owner's change, 2026-10-30: no
     "taps will heat" text)*;
   - two big seat buttons, driver left and passenger right: seat icon, three level bars,
-    orange = heating, blue = cooling, grey = off;
+    border colour (version 1: orange = next tap heats, blue = cools, grey = unavailable);
   - a row of preset buttons, each labelled with the preset's short name. *(My call: up to
     four on the page; more presets are allowed in the settings app but only the first four
     in its order are shown.)*
@@ -66,6 +66,13 @@ Only settings that have passed the command process below appear in the preset ed
 
 - Tapping a preset button applies its settings, one command per setting, in a fixed order
   *(builder's call)*, each sent once. No retries, no repeats.
+- **Version 2 (2.0.0) does seats only.** A preset has a name (1-10 characters) and a choice
+  for each front seat: leave as is, off, heat high/mid/low, or cool high/mid/low (cool only
+  on seats with the heat+vent option). At most 4 presets, edited in the settings app (add,
+  edit, delete, move up and down) and stored there; the page shows them in order. A tap sends
+  each chosen seat straight to its target, driver first, and skips seats already there,
+  seats not ready, and cool on a seat without the option. Nothing is retried; the 3-second
+  watch reports any seat that doesn't follow. Other settings join in later versions.
 - The page then shows the result through the real state (seat bars etc.). If a command is
   refused or the car doesn't change within a short time, a brief message says which setting
   didn't apply. *(My call.)*
