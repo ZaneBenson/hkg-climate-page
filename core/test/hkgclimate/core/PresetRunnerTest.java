@@ -82,8 +82,38 @@ public class PresetRunnerTest {
         /** Each fan press moves the fan the opposite way, wrapping from 2 to 9 and back. */
         boolean fanWrongWay;
         boolean staysInAuto;
+        /** The car ignores every command (they are still recorded). */
+        boolean deaf;
+        /** The next this-many temperature and fan presses are ignored (recorded, no effect). */
+        int dropFirst;
+        /** Every temperature or fan press that lands is preceded by this many ignored ones. */
+        int dropPerLanded;
+        private int dropRun;
         Exception climateThrows;
         int reads;
+        /** When set, the scheduler time of each call is kept in times (one per entry of calls). */
+        ManualScheduler clock;
+        final List<Long> times = new ArrayList<Long>();
+
+        private void note(String call) {
+            calls.add(call);
+            if (clock != null) times.add(clock.now);
+        }
+
+        private boolean dropped() {
+            if (dropFirst > 0) {
+                dropFirst--;
+                return true;
+            }
+            if (dropPerLanded > 0) {
+                if (dropRun < dropPerLanded) {
+                    dropRun++;
+                    return true;
+                }
+                dropRun = 0;
+            }
+            return false;
+        }
 
         void allOff() {
             opState = 2;
@@ -104,8 +134,9 @@ public class PresetRunnerTest {
         }
 
         public void climate(int flag, int value) throws Exception {
-            calls.add("climate " + flag + " " + value);
+            note("climate " + flag + " " + value);
             if (climateThrows != null) throw climateThrows;
+            if (deaf) return;
             if (flag == 51) {
                 allOffClimate();
                 return;
@@ -126,7 +157,7 @@ public class PresetRunnerTest {
                 case 9: ac = value; if (value == 0 && !staysInAuto) auto = 0; break;
                 case 6: airflow = value; if (!staysInAuto) auto = 0; break;
                 case 4:
-                    if (ignoreFan) break;
+                    if (ignoreFan || dropped()) break;
                     if (fanRaw == 1) fanRaw = 2;
                     else if (fanWrongWay) fanRaw = value == 1 ? (fanRaw == 2 ? 9 : fanRaw - 1)
                             : (fanRaw == 9 ? 2 : fanRaw + 1);
@@ -143,10 +174,12 @@ public class PresetRunnerTest {
                     }
                     break;
                 case 50:
+                    if (dropped()) break;
                     driverTemp += ((value == 1) != wrongWay) ? step : -step;
                     if (sync == 1) passengerTemp = driverTemp;
                     break;
                 case 49:
+                    if (dropped()) break;
                     passengerTemp += value == 1 ? step : -step;
                     sync = 0;
                     break;
@@ -163,12 +196,14 @@ public class PresetRunnerTest {
         }
 
         public void wheel(int value) {
-            calls.add("wheel " + value);
+            note("wheel " + value);
+            if (deaf) return;
             if (value == 1) wheel = 1 - wheel;
         }
 
         public void eco(int value) {
-            calls.add("eco " + value);
+            note("eco " + value);
+            if (deaf) return;
             eco = value == 2 ? 1 : 0;
         }
     }
@@ -212,6 +247,11 @@ public class PresetRunnerTest {
         sched.advance(199);
         assertEquals(Arrays.asList("wheel 1"), car.calls);
         sched.advance(1);
+        // the release goes out at 200; the next command waits 400 ms after it
+        assertEquals(Arrays.asList("wheel 1", "wheel 0"), car.calls);
+        sched.advance(399);
+        assertEquals(Arrays.asList("wheel 1", "wheel 0"), car.calls);
+        sched.advance(1);
         assertEquals(Arrays.asList("wheel 1", "wheel 0", "eco 2"), car.calls);
         sched.runAll();
         assertEquals("Cold: wheel on, eco on", runner.lastResult());
@@ -247,13 +287,257 @@ public class PresetRunnerTest {
         car.ignoreFan = true;
         assertTrue(runner.start(preset(L, L, L, L, 3, L, L, 1)));
         assertEquals(Arrays.asList("climate 4 1"), car.calls);
-        sched.advance(PresetRunner.STEP_WAIT_MS - 1);
-        assertEquals(Arrays.asList("climate 4 1"), car.calls);
+        // two retries, 500 ms apart (see the retry tests), then the last press waits the full time
+        sched.advance(1000 + PresetRunner.STEP_WAIT_MS - 1);
+        assertEquals(Collections.nCopies(3, "climate 4 1"), car.calls);
         sched.advance(1);
-        // no second fan press: the next item goes ahead
-        assertEquals(Arrays.asList("climate 4 1", "climate 22 2"), car.calls);
+        // no further fan press: the next item goes ahead
+        assertEquals(Arrays.asList("climate 4 1", "climate 4 1", "climate 4 1", "climate 22 2"),
+                car.calls);
         sched.runAll();
-        assertEquals("Cold: sync on; not done: fan 3 (no change after 1.5 s)", runner.lastResult());
+        assertEquals("Cold: sync on; not done: fan 3 (no change after 3 presses)",
+                runner.lastResult());
+    }
+
+    private static List<Long> times(long... t) {
+        List<Long> out = new ArrayList<Long>();
+        for (long x : t) out.add(x);
+        return out;
+    }
+
+    @Test
+    public void constantsAreTheApprovedOnes() {
+        assertEquals(400, PresetRunner.COMMAND_GAP_MS);
+        assertEquals(500, PresetRunner.RETRY_WAIT_MS);
+        assertEquals(2, PresetRunner.MAX_RETRIES);
+    }
+
+    @Test
+    public void consecutiveCommandsAreAtLeast400MsApartAndTheGapEndsWithAReRead() {
+        car.clock = sched;
+        run(preset(L, L, Preset.CLIMATE_MANUAL, 70, L, 1, L, L));
+        assertEquals(Arrays.asList("climate 9 1", "climate 50 2", "climate 50 2", "climate 49 2",
+                "climate 49 2"), car.calls);
+        // the car reported each press within 100 ms; the next press still waited out the 400 ms
+        assertEquals(times(0, 400, 800, 1200, 1600), car.times);
+        assertEquals("Cold: A/C on, manual, 70 °F (2 steps), passenger 70 °F (2 steps)",
+                runner.lastResult());
+    }
+
+    @Test
+    public void theCommandAfterTheGapDecidesFromAFreshRead() {
+        car.clock = sched;
+        assertTrue(runner.start(preset(L, L, L, 70, L, L, L, L)));
+        sched.advance(100); // the first press was reported; the next waits for 400 ms
+        assertEquals(1, car.calls.size());
+        int readsBefore = car.reads;
+        // the temperature is moved by someone else during the gap: 71 is one press from 70
+        car.driverTemp = 71f;
+        car.passengerTemp = 71f;
+        sched.advance(299);
+        assertEquals(readsBefore, car.reads);
+        assertEquals(1, car.calls.size());
+        sched.advance(1);
+        assertTrue(car.reads > readsBefore);
+        assertEquals(2, car.calls.size());
+        sched.runAll();
+        assertEquals(70f, car.driverTemp, 0f);
+    }
+
+    @Test
+    public void aFirstDelayHoldsBackTheFirstCommandAndZeroSendsAtOnce() {
+        car.clock = sched;
+        assertTrue(runner.start(preset(1, L, L, L, L, L, L, L), PresetRunner.COMMAND_GAP_MS));
+        assertTrue(runner.busy());
+        assertEquals("Cold: applying", runner.lastResult());
+        assertTrue(car.calls.isEmpty());
+        sched.advance(399);
+        assertTrue(car.calls.isEmpty());
+        sched.advance(1);
+        assertEquals(Arrays.asList("wheel 1"), car.calls);
+        sched.runAll();
+        assertFalse(runner.busy());
+        assertEquals("Cold: wheel on", runner.lastResult());
+
+        car.calls.clear();
+        car.wheel = 0;
+        assertTrue(runner.start(preset(1, L, L, L, L, L, L, L), 0));
+        assertEquals(Arrays.asList("wheel 1"), car.calls);
+        sched.runAll();
+    }
+
+    @Test
+    public void aFirstDelayStillReadsTheCarOnlyAfterTheDelay() {
+        assertTrue(runner.start(preset(1, L, L, L, L, L, L, L), 400));
+        assertEquals(0, car.reads);
+        car.wheel = 1; // someone turned it on meanwhile
+        sched.runAll();
+        assertTrue(car.calls.isEmpty());
+        assertEquals("Cold: wheel on", runner.lastResult());
+    }
+
+    @Test
+    public void aFailingSchedulerOnADelayedStartEndsTheRun() {
+        PresetRunner r = new PresetRunner(new CheckedCabinSender(car, log), car, new Scheduler() {
+            public void after(long delayMs, Runnable task) { throw new IllegalStateException("gone"); }
+        }, log);
+        assertTrue(r.start(preset(1, L, L, L, L, L, L, L), 400));
+        assertFalse(r.busy());
+        assertTrue(car.calls.isEmpty());
+        assertEquals("Cold: not done: wheel on (stopped: java.lang.IllegalStateException: gone)",
+                r.lastResult());
+    }
+
+    @Test
+    public void aDroppedTemperaturePressIsPressedAgainAfter500Ms() {
+        car.clock = sched;
+        car.driverOnly = 1;
+        car.passengerTemp = 0f;
+        car.dropFirst = 1;
+        run(preset(L, L, L, 71, L, L, L, L));
+        assertEquals(Collections.nCopies(2, "climate 50 2"), car.calls);
+        assertEquals(times(0, 500), car.times);
+        assertEquals(71f, car.driverTemp, 0f);
+        assertEquals("Cold: 71 °F (2 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void aTemperaturePressDroppedTwiceLandsOnTheThirdTry() {
+        car.clock = sched;
+        car.driverOnly = 1;
+        car.passengerTemp = 0f;
+        car.dropFirst = 2;
+        run(preset(L, L, L, 71, L, L, L, L));
+        assertEquals(times(0, 500, 1000), car.times);
+        assertEquals(71f, car.driverTemp, 0f);
+        assertEquals("Cold: 71 °F (3 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void aTemperaturePressDroppedEveryTimeIsSentThreeTimesThenReportedAndTheRunGoesOn() {
+        car.clock = sched;
+        car.driverOnly = 1;
+        car.passengerTemp = 0f;
+        car.dropFirst = 99;
+        run(preset(L, L, Preset.CLIMATE_MANUAL, 71, L, 1, L, L));
+        assertEquals(Arrays.asList("climate 9 1", "climate 50 2", "climate 50 2", "climate 50 2"),
+                car.calls);
+        assertEquals(times(0, 400, 900, 1400), car.times);
+        assertEquals(72f, car.driverTemp, 0f);
+        assertEquals("Cold: A/C on, manual; not done: 71 °F (no change after 3 presses)",
+                runner.lastResult());
+    }
+
+    @Test
+    public void aPressThatLandsIsNeverRepeatedEvenWhenTheNextOneIsDropped() {
+        car.clock = sched;
+        car.driverOnly = 1;
+        car.passengerTemp = 0f;
+        car.dropPerLanded = 1; // each step: one ignored press, then one that lands
+        run(preset(L, L, L, 70, L, L, L, L));
+        assertEquals(4, car.calls.size());
+        assertEquals(70f, car.driverTemp, 0f);
+        // landing resets the retries: each step gets its own two
+        assertEquals("Cold: 70 °F (4 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void aDroppedPassengerStepIsRetriedToo() {
+        car.clock = sched;
+        car.driverTemp = 71f;
+        car.passengerTemp = 72f;
+        car.dropFirst = 1;
+        run(preset(L, L, L, 71, L, L, L, L));
+        assertEquals(Arrays.asList("climate 49 2", "climate 49 2"), car.calls);
+        assertEquals(times(0, 500), car.times);
+        assertEquals(71f, car.passengerTemp, 0f);
+        assertEquals("Cold: 71 °F, passenger 71 °F (2 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void aDroppedFanPressIsRetriedAndLandsOnce() {
+        car.clock = sched;
+        car.fanRaw = 3;
+        car.dropFirst = 2;
+        run(preset(L, L, L, L, 3, L, L, L)); // fan 3 is raw 4
+        assertEquals(Collections.nCopies(3, "climate 4 1"), car.calls);
+        assertEquals(times(0, 500, 1000), car.times);
+        assertEquals(4, car.fanRaw);
+        assertEquals("Cold: fan 3 (3 steps)", runner.lastResult());
+    }
+
+    @Test
+    public void retriesCountTowardTheTemperatureCap() {
+        car.clock = sched;
+        car.wrongWay = true;
+        car.driverOnly = 1;
+        car.passengerTemp = 0f;
+        car.dropPerLanded = 2; // two ignored presses before each that lands (the wrong way)
+        run(preset(L, L, L, 70, L, L, L, L));
+        assertEquals(Collections.nCopies(PresetRunner.TEMP_CAP, "climate 50 2"), car.calls);
+        assertEquals("Cold: not done: 70 °F (stopped after 25 presses)", runner.lastResult());
+    }
+
+    @Test
+    public void retriesCountTowardTheFanCap() {
+        car.fanWrongWay = true;
+        car.fanRaw = 5;
+        car.dropPerLanded = 1;
+        run(preset(L, L, L, L, 6, L, L, L));
+        assertEquals(PresetRunner.FAN_CAP, car.calls.size());
+        assertEquals("Cold: not done: fan 6 (stopped after 10 presses)", runner.lastResult());
+    }
+
+    private void assertSentOnce(Preset p, String... calls) {
+        car.deaf = true;
+        run(p);
+        assertEquals(Arrays.asList(calls), car.calls);
+    }
+
+    @Test
+    public void nothingButTemperatureAndFanStepsIsEverRetried() {
+        car.ac = 0;
+        assertSentOnce(preset(L, L, Preset.CLIMATE_MANUAL, L, L, 1, L, L), "climate 9 1");
+        assertEquals("Cold: manual; not done: A/C on (no change after 1.5 s)", runner.lastResult());
+
+        car.calls.clear();
+        assertSentOnce(preset(L, L, Preset.CLIMATE_AUTO, L, L, L, L, L), "climate 8 1");
+
+        car.calls.clear();
+        assertSentOnce(preset(L, L, Preset.CLIMATE_MANUAL, L, L, L, 2, L), "climate 6 2");
+
+        car.calls.clear();
+        assertSentOnce(preset(L, L, L, L, L, L, L, 1), "climate 22 2");
+
+        car.calls.clear();
+        assertSentOnce(preset(L, L, Preset.CLIMATE_OFF, L, L, L, L, L), "climate 51 1");
+
+        car.calls.clear();
+        assertSentOnce(preset(1, L, L, L, L, L, L, L), "wheel 1", "wheel 0");
+
+        car.calls.clear();
+        assertSentOnce(preset(L, 1, L, L, L, L, L, L), "eco 2");
+    }
+
+    @Test
+    public void aForcedPressIsNeverRetried() {
+        car.auto = 1;
+        car.fanRaw = 5; // fan 4 is already the target; the press only leaves auto
+        assertSentOnce(preset(L, L, Preset.CLIMATE_MANUAL, L, 4, L, L, L), "climate 4 1");
+
+        car.calls.clear();
+        car.fanRaw = 2; // fan 1 at the low end: forced press is a down press
+        assertSentOnce(preset(L, L, Preset.CLIMATE_MANUAL, L, 1, L, L, L), "climate 4 2");
+    }
+
+    @Test
+    public void aTemperatureStepIsNotRetriedWhenSyncHoldsThePassengerBack() {
+        car.sync = 1;
+        car.passengerTemp = 75f;
+        car.driverTemp = 72f;
+        car.deaf = true;
+        run(preset(L, L, L, 72, L, L, L, L));
+        assertTrue(car.calls.isEmpty());
     }
 
     @Test

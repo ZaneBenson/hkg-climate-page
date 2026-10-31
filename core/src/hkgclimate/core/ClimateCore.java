@@ -90,7 +90,8 @@ public final class ClimateCore {
      * Applies the preset in slot index. Seats first, when the seats are ready: for the driver, then
      * the passenger, one command for each seat that has a target, is in a state we know, is not
      * already at the target, and, for a cool target, has the heat and cool option. Then the
-     * runner starts on the wheel, eco and cabin items, if the preset has any. Returns how many
+     * runner starts on the wheel, eco and cabin items, if the preset has any (its first command
+     * waits PresetRunner.COMMAND_GAP_MS after seat commands). Returns how many
      * seat commands were sent, plus 1 if the runner started; 0 for a request id seen before, a
      * bad or empty slot, a preset that fails Preset.check, or while the runner is busy.
      */
@@ -114,7 +115,9 @@ public final class ClimateCore {
                 sent++;
             }
         }
-        if (runner != null && p.hasRunnerItems() && runner.start(p)) sent++;
+        // the runner's first command comes at least COMMAND_GAP_MS after the seat commands
+        long firstDelay = sent > 0 ? PresetRunner.COMMAND_GAP_MS : 0;
+        if (runner != null && p.hasRunnerItems() && runner.start(p, firstDelay)) sent++;
         return sent;
     }
 

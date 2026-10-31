@@ -9,17 +9,31 @@ import java.util.List;
  * A/C, airflow, fan, sync, driver temperature, passenger temperature. For each item it reads the
  * car, decides, sends at most one command through the CheckedCabinSender, then reads every
  * POLL_MS until the item's value changes or STEP_WAIT_MS passes. A stepped item (fan,
- * temperature) decides its next press from the new value, up to a cap. Nothing is sent for an
- * item whose state is unknown, and an item that does not change is reported, never pressed
- * again. Single-threaded: call it, and run the scheduler's tasks, on one thread.
+ * temperature) decides its next press from the new value, up to a cap.
+ *
+ * Two commands are never closer than COMMAND_GAP_MS (the car silently ignored a temperature
+ * press sent 100 ms after the previous one; the stock screen's presses are about 450 ms apart):
+ * when a command is due sooner, the runner waits out the gap, then reads the car again and
+ * decides again. Only a temperature or fan step that did not change its value RETRY_WAIT_MS
+ * after the press is pressed again, at most MAX_RETRIES times for that step, each press counted
+ * toward the item's cap; a forced press (leaving auto) and every other item are sent once and
+ * reported if they did not change. Nothing is sent for an item whose state is unknown.
+ * Single-threaded: call it, and run the scheduler's tasks, on one thread.
  */
 public final class PresetRunner {
     public static final long POLL_MS = 100;
     public static final long STEP_WAIT_MS = 1500;
+    /** The least time between two commands of a run (and before its first, after a seat send). */
+    public static final long COMMAND_GAP_MS = 400;
+    /** How long a temperature or fan press may leave the value unchanged before it is pressed again. */
+    public static final long RETRY_WAIT_MS = 500;
+    /** Extra presses of one temperature or fan step that did not change anything. */
+    public static final int MAX_RETRIES = 2;
     public static final int FAN_CAP = 10;
     public static final int TEMP_CAP = 25;
 
     private static final String NO_CHANGE = "no change after 1.5 s";
+    private static final String NO_CHANGE_RETRIED = "no change after ";
     private static final String UNKNOWN_STATE = "unknown state";
 
     // the items, in the apply order
@@ -65,6 +79,15 @@ public final class PresetRunner {
     private int presses;
     private boolean waited;
     private boolean sentThisWait;
+    /** Retries used by the current step, and whether the call now deciding is one. */
+    private int retries;
+    private boolean retrying;
+    /** Whether the last press was a forced one (leaving auto): never retried. */
+    private boolean pressForced;
+    /** Time since the last command, as the runner counts it; negative while a wheel release is due. */
+    private long quietMs;
+    /** How long the scheduled gap wait lasts. */
+    private long gapWaitMs;
     private String before;
     private int polls;
     private int unit = CabinState.UNKNOWN;
@@ -89,7 +112,13 @@ public final class PresetRunner {
      * before this returns. False (and nothing read or sent) while a run is busy, or for a preset
      * that is null, fails Preset.check, or has none of these items.
      */
-    public boolean start(Preset p) {
+    public boolean start(Preset p) { return start(p, 0); }
+
+    /**
+     * Like start(Preset), but with firstDelayMs above zero nothing is read or sent before that
+     * time has passed (the caller has just sent seat commands); true while the run is waiting.
+     */
+    public boolean start(Preset p, long firstDelayMs) {
         if (busy || p == null || !p.hasRunnerItems() || Preset.check(p) != null) return false;
         preset = p;
         items = itemsOf(p);
@@ -97,7 +126,23 @@ public final class PresetRunner {
         done.clear();
         notDone.clear();
         unit = CabinState.UNKNOWN;
+        quietMs = COMMAND_GAP_MS;
+        retries = 0;
+        retrying = false;
+        pressForced = false;
         busy = true;
+        if (firstDelayMs > 0) {
+            try {
+                scheduler.after(firstDelayMs, new Runnable() {
+                    @Override public void run() {
+                        if (busy) begin();
+                    }
+                });
+            } catch (Throwable t) {
+                stop(t);
+            }
+            return true;
+        }
         begin();
         return true;
     }
@@ -143,6 +188,8 @@ public final class PresetRunner {
     private void begin() {
         while (index < items.length) {
             presses = 0;
+            retries = 0;
+            retrying = false;
             waited = false;
             try {
                 if (decideAndAct()) return; // waiting for the car
@@ -186,17 +233,47 @@ public final class PresetRunner {
                         + (cap == 1 ? "not reached" : "stopped after " + cap + " presses") + ")");
                 return false;
             }
+            if (quietMs < COMMAND_GAP_MS) {
+                // too soon after the last command: wait out the gap, then read and decide again
+                gapWaitMs = COMMAND_GAP_MS - quietMs;
+                scheduleGap();
+                return true;
+            }
             if (!send()) {
                 notDone.add(label(item) + " (not sent)");
                 return false;
             }
             presses++;
+            if (retrying) retries++;
+            retrying = false;
             sentThisWait = true;
+            // the wheel's release is a command too, WHEEL_RELEASE_MS after the press
+            quietMs = item == WHEEL ? -CheckedCabinSender.WHEEL_RELEASE_MS : 0;
         }
         before = key(item, s);
         polls = 0;
         schedulePoll();
         return true;
+    }
+
+    private void scheduleGap() {
+        scheduler.after(gapWaitMs, new Runnable() {
+            @Override public void run() { gapElapsed(); }
+        });
+    }
+
+    /** The gap is over: the item reads the car again and decides again. */
+    private void gapElapsed() {
+        try {
+            if (!busy) return;
+            quietMs += gapWaitMs;
+            if (decideAndAct()) return;
+        } catch (Throwable t) {
+            stop(t);
+            return;
+        }
+        index++;
+        begin();
     }
 
     private void schedulePoll() {
@@ -211,18 +288,28 @@ public final class PresetRunner {
             if (!busy) return;
             int item = items[index];
             polls++;
+            quietMs += POLL_MS;
             CabinState s = read();
             boolean changed = !key(item, s).equals(before)
                     && !(item == WHEEL && sender.wheelPending());
+            boolean canRetry = canRetry(item);
             if (changed) {
+                retries = 0; // the press landed; the next step has its own retries
                 if (decideAndAct()) return;
-            } else if (polls * POLL_MS >= STEP_WAIT_MS) {
+            } else if (canRetry && polls * POLL_MS >= RETRY_WAIT_MS) {
+                // the press changed nothing: read again (decideAndAct does) and press again
+                retrying = true;
+                boolean waiting = decideAndAct();
+                if (waiting) return;
+                retrying = false;
+            } else if (!canRetry && polls * POLL_MS >= STEP_WAIT_MS) {
                 // a forced press (manual in auto) that changed nothing still leaves the item at target
                 int d = decide(item, s);
                 if (d == DONE || (d == QUIET && presses > 0)) {
                     done.add(label(item) + stepsText(item));
                 } else if (d != QUIET) {
-                    String reason = sentThisWait ? NO_CHANGE : "did not follow sync";
+                    String reason = !sentThisWait ? "did not follow sync"
+                            : retries > 0 ? NO_CHANGE_RETRIED + presses + " presses" : NO_CHANGE;
                     notDone.add(label(item) + " (" + reason + ")");
                 }
             } else {
@@ -235,6 +322,15 @@ public final class PresetRunner {
         }
         index++;
         begin();
+    }
+
+    /**
+     * Whether a press of this item that changed nothing may be pressed again: an ordinary
+     * temperature or fan step (not a forced press) with retries left.
+     */
+    private boolean canRetry(int item) {
+        return (item == FAN || item == DRIVER_TEMP || item == PASSENGER_TEMP)
+                && sentThisWait && !pressForced && retries < MAX_RETRIES;
     }
 
     /** Ends the run at the current item after an unexpected failure (for example the scheduler). */
@@ -295,6 +391,7 @@ public final class PresetRunner {
     /** Sets sendFlag and sendValue (for SEND) or why (for NOT_DONE). */
     private int decide(int item, CabinState s) {
         Preset p = preset;
+        pressForced = false;
         switch (item) {
             case WHEEL:
                 if (!onOff(s.wheel)) return unknown();
@@ -355,6 +452,7 @@ public final class PresetRunner {
         if (s.fanRaw == 1) return send(CheckedCabinSender.FLAG_FAN, CheckedCabinSender.UP);
         if (s.fanRaw == target) {
             if (!forced(s)) return DONE;
+            pressForced = true;
             // one press to leave auto: at an end it changes nothing, elsewhere the next steps undo it
             return send(CheckedCabinSender.FLAG_FAN, target == Preset.FAN_MIN + 1
                     ? CheckedCabinSender.DOWN : CheckedCabinSender.UP);

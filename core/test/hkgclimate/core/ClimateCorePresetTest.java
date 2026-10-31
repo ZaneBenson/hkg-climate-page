@@ -268,8 +268,13 @@ public class ClimateCorePresetTest {
         w.ready(2, 2);
         w.core.setPresets(Arrays.asList(new Preset("Cold", 8, 8, 1, L, L, L, L, L, L, L)));
         assertEquals(3, w.core.onPresetTap(0, 1));
-        assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8", "wheel 1"), w.car.calls);
+        // the seats were just sent: the runner's first command waits 400 ms
+        assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8"), w.car.calls);
         assertTrue(w.runner.busy());
+        w.sched.advance(399);
+        assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8"), w.car.calls);
+        w.sched.advance(1);
+        assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8", "wheel 1"), w.car.calls);
         w.sched.runAll();
         assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8", "wheel 1", "wheel 0"), w.car.calls);
         assertEquals("Cold: wheel on", w.runner.lastResult());
