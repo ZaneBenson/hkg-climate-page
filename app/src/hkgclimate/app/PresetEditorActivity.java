@@ -12,7 +12,6 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import hkgclimate.core.Preset;
@@ -24,15 +23,18 @@ import java.util.List;
 
 /**
  * Adds or edits one preset: a name and a dropdown for each item, in this order: driver seat,
- * passenger seat, steering wheel, eco, climate, temperature, fan, A/C, airflow, sync. Started only
+ * passenger seat, steering wheel, eco, climate, driver temperature, passenger temperature, fan, A/C,
+ * airflow, sync. Every dropdown is a Spinner in dialog mode (a centred list that scrolls), and the
+ * content sits in the narrow column beside the split-screen panel (Column). Started only
  * by our SettingsActivity (not exported). Extras: "index" (the slot being edited, -1 for a new
  * preset), "drvOption" / "astOption" (the seats' raw option values from the settings screen's last
  * state; missing or unknown means heat and cool) and "unit" (the car's temperature unit from that
  * state, 1 Celsius, 2 Fahrenheit; missing means Fahrenheit). The cool choices appear only for a
  * seat whose option is heat and cool, except a cool value the preset already has for that seat.
- * Choosing a climate mode greys out (disables) the items it does not use; they are stored as Leave
- * as is. Save builds the whole preset, checks it with Preset.check, and writes the preferences
- * directly, only after the check passes.
+ * Choosing a climate mode, or Sync, greys out (disables) the items it does not use (Sync on greys
+ * the passenger temperature); they are stored as Leave as is. Save builds the whole preset, checks it with Preset.check, and writes the preferences
+ * directly, only after the check passes; finish() is guarded, as it throws on this head unit when
+ * the app lacks GET_TASKS, and a throw leaves "Saved" on the message line.
  */
 public class PresetEditorActivity extends Activity {
     private static final String TAG = CarLink.TAG;
@@ -60,6 +62,10 @@ public class PresetEditorActivity extends Activity {
     private static final int ID_AC = 308;
     private static final int ID_AIRFLOW = 309;
     private static final int ID_SYNC = 310;
+    private static final int ID_PASSENGER_TEMP = 311;
+
+    /** The message line's text once the preset is stored but the screen could not be closed. */
+    private static final String SAVED = "Saved";
 
     /** One dropdown, the value behind each of its positions and the item name the climate mode greys by (null for a seat). */
     private static final class Item {
@@ -109,13 +115,24 @@ public class PresetEditorActivity extends Activity {
     private Item wheel;
     private Item eco;
     private Item climate;
-    private Item temperature;
+    private Item driverTemp;
+    private Item passengerTemp;
     private Item fan;
     private Item ac;
     private Item airflow;
     private Item sync;
     private final List<Item> items = new ArrayList<Item>();
     private TextView error;
+    private Button saveButton;
+    private final AdapterView.OnItemSelectedListener greyingListener = new AdapterView.OnItemSelectedListener() {
+        @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            applyGreying();
+        }
+
+        @Override public void onNothingSelected(AdapterView<?> parent) {
+            applyGreying();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -168,8 +185,6 @@ public class PresetEditorActivity extends Activity {
     private View buildViews(Preset editing, int drvOption, int astOption, int unit) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(32);
-        root.setPadding(pad, pad, pad, pad);
 
         root.addView(text(editing == null ? "New preset" : "Edit preset", 30));
 
@@ -195,17 +210,12 @@ public class PresetEditorActivity extends Activity {
                 PresetChoices.eco(), editing == null ? leave : editing.eco);
         climate = choiceSpinner(root, "Climate", ID_CLIMATE, PresetChoices.ITEM_CLIMATE,
                 PresetChoices.climate(), editing == null ? leave : editing.climate);
-        climate.view.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                applyGreying();
-            }
-
-            @Override public void onNothingSelected(AdapterView<?> parent) {
-                applyGreying();
-            }
-        });
-        temperature = choiceSpinner(root, "Temperature", ID_TEMPERATURE, PresetChoices.ITEM_DRIVER_TEMP,
+        climate.view.setOnItemSelectedListener(greyingListener);
+        driverTemp = choiceSpinner(root, "Driver temperature", ID_TEMPERATURE, PresetChoices.ITEM_DRIVER_TEMP,
                 PresetChoices.temperatureChoices(unit), editing == null ? leave : editing.driverTempF);
+        passengerTemp = choiceSpinner(root, "Passenger temperature", ID_PASSENGER_TEMP,
+                PresetChoices.ITEM_PASSENGER_TEMP, PresetChoices.temperatureChoices(unit),
+                editing == null ? leave : editing.passengerTempF);
         fan = choiceSpinner(root, "Fan speed", ID_FAN, PresetChoices.ITEM_FAN,
                 PresetChoices.fan(), editing == null ? leave : editing.fan);
         ac = choiceSpinner(root, "A/C", ID_AC, PresetChoices.ITEM_AC,
@@ -214,6 +224,7 @@ public class PresetEditorActivity extends Activity {
                 PresetChoices.airflow(), editing == null ? leave : editing.airflow);
         sync = choiceSpinner(root, "Sync", ID_SYNC, PresetChoices.ITEM_SYNC,
                 PresetChoices.sync(), editing == null ? leave : editing.sync);
+        sync.view.setOnItemSelectedListener(greyingListener);
 
         error = text("", 20);
         error.setTextColor(Color.RED);
@@ -224,6 +235,7 @@ public class PresetEditorActivity extends Activity {
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setPadding(0, dp(16), 0, 0);
         Button save = new Button(this);
+        saveButton = save;
         save.setText("Save");
         save.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { save(); }
@@ -237,9 +249,7 @@ public class PresetEditorActivity extends Activity {
         buttons.addView(cancel);
         root.addView(buttons);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(root);
-        return scroll;
+        return Column.wrap(this, root);
     }
 
     /**
@@ -278,7 +288,7 @@ public class PresetEditorActivity extends Activity {
         TextView label = text(title, 22);
         label.setPadding(0, dp(24), 0, dp(8));
         root.addView(label);
-        Spinner spinner = new Spinner(this);
+        Spinner spinner = new Spinner(this, Spinner.MODE_DIALOG);
         spinner.setId(id);
         spinner.setAdapter(new SizedAdapter(this, labels));
         spinner.setSelection(selected);
@@ -311,11 +321,12 @@ public class PresetEditorActivity extends Activity {
 
     /** Builds the whole preset and checks it with Preset.check; only a valid preset is stored. The reason shows otherwise. */
     private void save() {
+        error.setTextColor(Color.RED);
         error.setText("");
         List<Preset> next;
         try {
             Preset p = new Preset(nameField.getText().toString(), driver.value(), passenger.value(),
-                    wheel.value(), eco.value(), climate.value(), temperature.value(), temperature.value(), fan.value(),
+                    wheel.value(), eco.value(), climate.value(), driverTemp.value(), passengerTemp.value(), fan.value(),
                     ac.value(), airflow.value(), sync.value());
             String reason = Preset.check(p);
             if (reason != null) {
@@ -347,7 +358,16 @@ public class PresetEditorActivity extends Activity {
             error.setText("could not save: the settings write was refused");
             return;
         }
-        finish();
+        // finish() can throw on this head unit (SecurityException, GET_TASKS): the preset is stored by
+        // now, so a throw is logged and the message line says Saved, never a crash; Back leaves
+        try {
+            finish();
+        } catch (Throwable t) {
+            Log.w(TAG, "the preset is saved but the editor could not close", t);
+            error.setTextColor(Color.rgb(0, 128, 0));
+            error.setText(SAVED);
+            saveButton.setEnabled(false); // a second Save would add the preset again
+        }
     }
 
     /** Logs the error with its stack trace and shows its class and message in full. */

@@ -16,11 +16,12 @@ import android.os.Parcel;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import hkgclimate.core.Preset;
 import hkgclimate.core.PresetList;
@@ -161,8 +162,6 @@ public class SettingsActivity extends Activity {
     private View buildViews() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(32);
-        root.setPadding(pad, pad, pad, pad);
 
         root.addView(text("Climate Page settings", 30));
 
@@ -216,9 +215,7 @@ public class SettingsActivity extends Activity {
         commandStatus.setPadding(0, dp(24), 0, 0);
         root.addView(commandStatus);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(root);
-        return scroll;
+        return Column.wrap(this, root);
     }
 
     /** One step of the switch temperature in the shown unit. Only a press writes the preference. */
@@ -270,16 +267,16 @@ public class SettingsActivity extends Activity {
                 presetBox.addView(line);
                 LinearLayout row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                row.addView(smallButton("Edit", true, new View.OnClickListener() {
+                addToRow(row, smallButton("Edit", true, new View.OnClickListener() {
                     @Override public void onClick(View v) { edit(at); }
                 }));
-                row.addView(smallButton("Delete", true, new View.OnClickListener() {
+                addToRow(row, smallButton("Delete", true, new View.OnClickListener() {
                     @Override public void onClick(View v) { confirmDelete(at, p.name); }
                 }));
-                row.addView(smallButton("Up", at > 0, new View.OnClickListener() {
+                addToRow(row, smallButton("Up", at > 0, new View.OnClickListener() {
                     @Override public void onClick(View v) { move(at, -1); }
                 }));
-                row.addView(smallButton("Down", at < list.size() - 1, new View.OnClickListener() {
+                addToRow(row, smallButton("Down", at < list.size() - 1, new View.OnClickListener() {
                     @Override public void onClick(View v) { move(at, 1); }
                 }));
                 presetBox.addView(row);
@@ -287,13 +284,26 @@ public class SettingsActivity extends Activity {
             Button add = smallButton("Add preset", list.size() < PresetList.MAX, new View.OnClickListener() {
                 @Override public void onClick(View v) { edit(-1); }
             });
-            presetBox.addView(add);
+            // wrap-content and left-aligned: as wide as its label, never the whole column
+            presetBox.addView(add, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
             if (list.size() >= PresetList.MAX) {
                 presetBox.addView(text("At most " + PresetList.MAX + " presets", 16));
             }
         } catch (Throwable t) {
             Log.w(TAG, "settings preset list failed", t);
         }
+    }
+
+    /**
+     * Adds a button that shares the row's width equally and may shrink below its usual minimum, so
+     * Edit, Delete, Up and Down always fit in the column (a long label is cut rather than pushed out).
+     */
+    private static void addToRow(LinearLayout row, Button b) {
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        b.setSingleLine(true);
+        row.addView(b, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
     }
 
     private Button smallButton(String label, boolean enabled, View.OnClickListener l) {
@@ -322,15 +332,31 @@ public class SettingsActivity extends Activity {
 
     private void confirmDelete(final int index, String name) {
         try {
-            new AlertDialog.Builder(this)
+            AlertDialog dialog = new AlertDialog.Builder(this)
                     .setMessage("Delete preset " + name + "?")
                     .setPositiveButton("Delete", new DialogInterface.OnClickListener() {
                         @Override public void onClick(DialogInterface d, int which) { delete(index); }
                     })
                     .setNegativeButton("Cancel", null)
-                    .show();
+                    .create();
+            dialog.show();
+            narrow(dialog);
         } catch (Throwable t) {
             Log.w(TAG, "settings could not show the delete question", t);
+        }
+    }
+
+    /**
+     * Keeps the dialog no wider than the column and against the left edge, clear of the right-hand
+     * panel. A failure here only leaves the dialog where the system put it.
+     */
+    private void narrow(AlertDialog dialog) {
+        try {
+            Window w = dialog.getWindow();
+            w.setLayout(Column.widthPx(this), WindowManager.LayoutParams.WRAP_CONTENT);
+            w.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        } catch (Throwable t) {
+            Log.w(TAG, "settings could not place the delete question", t);
         }
     }
 

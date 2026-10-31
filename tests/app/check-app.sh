@@ -764,5 +764,124 @@ check "onDestroy removes the highlight poll" \
 check "self-test: method_has_ref sees onDestroy removing the watch check (the poll check above can see one)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onDestroy:' 'iget-object.*ClimateService;\.watchCheck:'
 
+# the settings and editor screens fit beside the side panel; dialog-mode dropdowns; both
+# temperatures; Save never crashes on finish()
+# method_ref_count_ge <dexdump -d output> <class.method:> <ref> <n>: that method's code refers to <ref> on at least <n> lines
+method_ref_count_ge() {
+    [ "$(awk -v m="$2" 'index($0, "] " m) { on = 1; next } on && /\|\[/ { on = 0 } on' "$1" | grep -c "$3")" -ge "$4" ]
+}
+# finish_guarded <dexdump -d output> <class.method:> <text>: the method calls finish(), and every
+# call is inside a try range whose handler (the 64 code units after it starts) sets the text <text>
+finish_guarded() {
+    awk -v want="$2" -v str="$3" '
+        function hex(s,   i, n) {
+            sub(/^0x/, "", s); n = 0
+            for (i = 1; i <= length(s); i++) n = n * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+            return n
+        }
+        BEGIN { nf = 0; ns = 0; nr = 0 }
+        /Class descriptor/ { meth = "" }
+        /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m; next }
+        index(meth, want) != 1 { next }
+        match($0, /\|[0-9a-f]+: /) {
+            addr = hex(substr($0, RSTART + 1, RLENGTH - 3))
+            if (index($0, "invoke-") && index($0, ".finish:()V")) fin[nf++] = addr
+            if (index($0, "const-string") && index($0, "\"" str "\"")) saved[ns++] = addr
+            next
+        }
+        /^ +0x[0-9a-f]+ - 0x[0-9a-f]+$/ { lo = hex($1); hi = hex($3); next }
+        /-> 0x[0-9a-f]+/ { h = $0; sub(/.*-> /, "", h); rl[nr] = lo; rh[nr] = hi; rt[nr] = hex(h); nr++ }
+        END {
+            if (nf == 0) exit 1
+            for (i = 0; i < nf; i++) {
+                ok = 0
+                for (j = 0; j < nr; j++) {
+                    if (fin[i] < rl[j] || fin[i] >= rh[j]) continue
+                    for (k = 0; k < ns; k++) if (saved[k] >= rt[j] && saved[k] < rt[j] + 64) ok = 1
+                }
+                if (!ok) exit 1
+            }
+            exit 0
+        }' "$1"
+}
+scratch_dex spin1 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.Spinner(c); } }'
+scratch_dex spin2 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.Spinner(c, android.widget.Spinner.MODE_DIALOG); } }'
+scratch_dex fin_ok PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { try { finish(); } catch (Throwable t) { error.setText("Saved"); } } }'
+scratch_dex fin_bare PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { error.setText("Saved"); finish(); } }'
+scratch_dex fin_quiet PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { error.setText("Saved"); try { finish(); } catch (Throwable t) { error.setText("failed"); } } }'
+scratch_dex fin_none PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { try { error.setText("x"); } catch (Throwable t) { error.setText("Saved"); } } }'
+scratch_dex lis1 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void save(android.widget.Spinner a, android.widget.Spinner b, android.widget.AdapterView.OnItemSelectedListener l) { a.setOnItemSelectedListener(l); } }'
+scratch_dex lis2 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void save(android.widget.Spinner a, android.widget.Spinner b, android.widget.AdapterView.OnItemSelectedListener l) { a.setOnItemSelectedListener(l); b.setOnItemSelectedListener(l); } }'
+
+check "the editor builds its dropdowns in dialog mode (Spinner(Context, int))" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
+check "the editor never builds a Spinner in the default drop-down mode" \
+    code_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
+check "self-test: the dialog-mode check flags a one-argument Spinner" \
+    fails code_lacks_ref "$ST/spin1/code.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
+check "self-test: the dialog-mode check passes a two-argument Spinner" \
+    code_lacks_ref "$ST/spin2/code.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
+check "self-test: the two-argument constructor shows up in the listing of the dialog-mode scratch editor" \
+    method_has_ref "$ST/spin2/code.txt" 'hkgclimate.app.PresetEditorActivity.go:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
+check "self-test: the two-argument constructor does not show up in the one-argument scratch editor" \
+    fails method_has_ref "$ST/spin1/code.txt" 'hkgclimate.app.PresetEditorActivity.go:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
+
+check "the editor has a driver temperature dropdown (item name for the greying)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.buildViews:' 'const-string.*"driverTemp"'
+check "the editor has a passenger temperature dropdown (item name for the greying)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.buildViews:' 'const-string.*"passengerTemp"'
+check "the editor titles the driver temperature" dex_has_string "$TMP/classes.dex" "Driver temperature"
+check "the editor titles the passenger temperature" dex_has_string "$TMP/classes.dex" "Passenger temperature"
+check "the editor greys by climate and by sync (PresetChoices.greyed takes the item, climate and sync)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.applyGreying:' 'PresetChoices;\.greyed:(Ljava/lang/String;II)Z'
+check "the editor re-applies the greying when the climate or the sync changes (two listeners set)" \
+    method_ref_count_ge "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.buildViews:' 'Spinner;\.setOnItemSelectedListener' 2
+check "the greying listener calls back into the editor (the accessor of the private applyGreying)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity$1.onItemSelected:' 'PresetEditorActivity;\.access\$000:'
+check "that accessor reaches applyGreying" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.access$000:' 'PresetEditorActivity;\.applyGreying:'
+check "self-test: the listener count passes two listeners" \
+    method_ref_count_ge "$ST/lis2/code.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Spinner;\.setOnItemSelectedListener' 2
+check "self-test: the listener count fails on one listener" \
+    fails method_ref_count_ge "$ST/lis1/code.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Spinner;\.setOnItemSelectedListener' 2
+
+check "Save: finish() is inside a try whose handler sets the text Saved" \
+    finish_guarded "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' Saved
+check "Save: the finish handler logs the error (Log.w with a Throwable)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Landroid/util/Log;\.w:(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I'
+check "self-test: finish_guarded passes a guarded finish with a Saved handler" \
+    finish_guarded "$ST/fin_ok/code.txt" 'hkgclimate.app.PresetEditorActivity.save:' Saved
+check "self-test: finish_guarded fails an unguarded finish" \
+    fails finish_guarded "$ST/fin_bare/code.txt" 'hkgclimate.app.PresetEditorActivity.save:' Saved
+check "self-test: finish_guarded fails a guarded finish whose handler does not say Saved" \
+    fails finish_guarded "$ST/fin_quiet/code.txt" 'hkgclimate.app.PresetEditorActivity.save:' Saved
+check "self-test: finish_guarded fails a method with no finish at all" \
+    fails finish_guarded "$ST/fin_none/code.txt" 'hkgclimate.app.PresetEditorActivity.save:' Saved
+check "self-test: finish_guarded fails a listing with no such method" \
+    fails finish_guarded "$ST/fin_ok/code.txt" 'hkgclimate.app.PresetEditorActivity.nothere:' Saved
+
+check "the settings screen goes through the narrow column (Column.wrap)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.buildViews:' 'Lhkgclimate/app/Column;\.wrap:'
+check "the editor goes through the narrow column (Column.wrap)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.buildViews:' 'Lhkgclimate/app/Column;\.wrap:'
+check "the column is left-aligned (layout params with a gravity in the scroll view)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Column.wrap:' 'FrameLayout\$LayoutParams;\.<init>:(III)V'
+check "the column is never wider than the screen (Math.min in widthPx)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Column.widthPx:' 'Ljava/lang/Math;\.min:(II)I'
+check "the preset buttons share the row's width (weighted LinearLayout.LayoutParams)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.addToRow:' 'LinearLayout\$LayoutParams;\.<init>:(IIF)V'
+check "the delete question is sized by Window.setLayout" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.narrow:' 'Landroid/view/Window;\.setLayout:(II)V'
+check "the delete question is put at the left edge (Window.setGravity)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.narrow:' 'Landroid/view/Window;\.setGravity:(I)V'
+check "the delete question's width comes from the column" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.narrow:' 'Lhkgclimate/app/Column;\.widthPx:'
+check "the delete confirm narrows its dialog" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.confirmDelete:' 'SettingsActivity;\.narrow:'
+check "Add preset is limited at six (refreshPresets compares the list size with 6)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.refreshPresets:' '#int 6 '
+check "self-test: the limit check does not see a 7 in refreshPresets" \
+    fails method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.refreshPresets:' '#int 7 '
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
 echo "all checks passed"
