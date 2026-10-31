@@ -309,7 +309,7 @@ public final class PresetRunner {
                     done.add(label(item) + stepsText(item));
                 } else if (d != QUIET) {
                     String reason = !sentThisWait ? "did not follow sync"
-                            : retries > 0 ? NO_CHANGE_RETRIED + presses + " presses" : NO_CHANGE;
+                            : retries > 0 ? NO_CHANGE_RETRIED + (MAX_RETRIES + 1) + " presses" : NO_CHANGE;
                     notDone.add(label(item) + " (" + reason + ")");
                 }
             } else {

@@ -429,6 +429,20 @@ public class PresetRunnerTest {
     }
 
     @Test
+    public void theNoChangeCountIsThePressesOfTheLastStepNotOfTheWholeItem() {
+        car.clock = sched;
+        car.driverOnly = 1;
+        car.passengerTemp = 0f;
+        assertTrue(runner.start(preset(L, L, L, 70, L, L, L, L)));
+        car.dropFirst = 99; // the first press landed (72 -> 71); every later one is dropped
+        sched.runAll();
+        assertFalse(runner.busy());
+        assertEquals(Collections.nCopies(4, "climate 50 2"), car.calls);
+        assertEquals(times(0, 400, 900, 1400), car.times);
+        assertEquals("Cold: not done: 70 °F (no change after 3 presses)", runner.lastResult());
+    }
+
+    @Test
     public void aPressThatLandsIsNeverRepeatedEvenWhenTheNextOneIsDropped() {
         car.clock = sched;
         car.driverOnly = 1;
