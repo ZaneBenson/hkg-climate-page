@@ -17,10 +17,10 @@ import hkgclimate.link.PageLink;
 
 /**
  * The climate page's view, built in code (the panel app has no resources of ours): a top line
- * with a Settings button, two seat buttons with three level bars each, four greyed preset slots
- * and a yellow strip while this is a test build. The slot is 640 x 720 px at density 240; sizes
- * are given in dp and sp and converted with the context's display metrics. All methods are for
- * the main thread.
+ * with a Settings button, two seat buttons with three level bars each (the button's border shows
+ * what the next tap does: orange heats, blue cools, grey is unavailable) and four greyed preset
+ * slots. The slot is 640 x 720 px at density 240; sizes are given in dp and sp and converted with
+ * the context's display metrics. All methods are for the main thread.
  */
 final class PageView extends FrameLayout {
     private static final String TAG = ClimatePage.TAG;
@@ -36,7 +36,6 @@ final class PageView extends FrameLayout {
     private static final int COLOR_HEAT = Color.parseColor("#FF8A00");
     private static final int COLOR_COOL = Color.parseColor("#2D9CDB");
     private static final int COLOR_OFF = Color.parseColor("#62797F");
-    private static final int COLOR_STRIP = Color.parseColor("#F2C94C");
     private static final int TEXT_DAY = Color.parseColor("#62797F");
     private static final int TEXT_NIGHT = Color.parseColor("#B6C1C8");
 
@@ -53,11 +52,11 @@ final class PageView extends FrameLayout {
     private final TextView[] seatStates = new TextView[SEATS];
     private final View[][] bars = new View[SEATS][BARS];
     private final TextView[] presets = new TextView[4];
-    private final TextView strip;
 
     private final String[] seatTextNow = new String[SEATS];
     private final int[] levelNow = new int[SEATS];
     private final int[] kindNow = new int[SEATS];
+    private final int[] tapKindNow = new int[SEATS];
     private final boolean[] enabledNow = new boolean[SEATS];
 
     private boolean night;
@@ -134,7 +133,7 @@ final class PageView extends FrameLayout {
             for (int j = 0; j < BARS; j++) {
                 View bar = new View(context);
                 bars[i][j] = bar;
-                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(10));
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(36), dp(9));
                 if (j > 0) bp.leftMargin = dp(4);
                 barRow.addView(bar, bp);
             }
@@ -167,7 +166,7 @@ final class PageView extends FrameLayout {
                 }
             });
             seatButtons[i] = b;
-            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(200), dp(200));
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(180), dp(180));
             if (i > 0) sp.leftMargin = dp(24);
             seatRow.addView(b, sp);
         }
@@ -188,7 +187,7 @@ final class PageView extends FrameLayout {
                 p.setAlpha(0.35f);
                 p.setClickable(false);
                 presets[row * 2 + col] = p;
-                LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(dp(200), dp(56));
+                LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(dp(180), dp(50));
                 if (col > 0) pp.leftMargin = dp(24);
                 r.addView(p, pp);
             }
@@ -197,20 +196,6 @@ final class PageView extends FrameLayout {
             rp.bottomMargin = dp(8);
             column.addView(r, rp);
         }
-
-        // the test mode strip
-        strip = new TextView(context);
-        textSize(strip, 14);
-        strip.setText("Test mode: taps are logged, not sent");
-        strip.setTextColor(Color.BLACK);
-        strip.setBackgroundColor(COLOR_STRIP);
-        strip.setGravity(Gravity.CENTER);
-        strip.setPadding(dp(8), dp(6), dp(8), dp(6));
-        strip.setVisibility(View.GONE);
-        LinearLayout.LayoutParams stripParams = new LinearLayout.LayoutParams(
-                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        stripParams.topMargin = dp(4);
-        column.addView(strip, stripParams);
 
         showNotice(WAITING);
         applyTheme();
@@ -233,6 +218,7 @@ final class PageView extends FrameLayout {
             seatTextNow[i] = null;
             levelNow[i] = 0;
             kindNow[i] = 0;
+            tapKindNow[i] = 0;
             enabledNow[i] = false;
         }
         refreshSeats();
@@ -246,14 +232,15 @@ final class PageView extends FrameLayout {
         String[] text = state.getStringArray(PageLink.K_SEAT_TEXT);
         int[] level = state.getIntArray(PageLink.K_SEAT_LEVEL);
         int[] kind = state.getIntArray(PageLink.K_SEAT_KIND);
+        int[] tapKind = state.getIntArray(PageLink.K_SEAT_TAP_KIND);
         boolean[] enabled = state.getBooleanArray(PageLink.K_SEAT_ENABLED);
         for (int i = 0; i < SEATS; i++) {
             seatTextNow[i] = text != null && i < text.length ? text[i] : null;
             levelNow[i] = level != null && i < level.length ? level[i] : 0;
             kindNow[i] = kind != null && i < kind.length ? kind[i] : 0;
+            tapKindNow[i] = tapKind != null && i < tapKind.length ? tapKind[i] : 0;
             enabledNow[i] = enabled != null && i < enabled.length && enabled[i];
         }
-        strip.setVisibility(state.getBoolean(PageLink.K_TEST_MODE, false) ? View.VISIBLE : View.GONE);
         refreshSeats();
     }
 
@@ -279,6 +266,7 @@ final class PageView extends FrameLayout {
             for (int j = 0; j < BARS; j++) {
                 bars[i][j].setBackgroundColor(j < levelNow[i] ? lit : COLOR_OFF);
             }
+            seatButtons[i].setBackground(seatOutline(i));
             seatButtons[i].setEnabled(enabledNow[i]);
             seatButtons[i].setAlpha(enabledNow[i] ? 1f : 0.5f);
         }
@@ -292,7 +280,7 @@ final class PageView extends FrameLayout {
         for (int i = 0; i < SEATS; i++) {
             seatNames[i].setTextColor(c);
             seatStates[i].setTextColor(c);
-            seatButtons[i].setBackground(outline(c, 12));
+            seatButtons[i].setBackground(seatOutline(i));
         }
         for (TextView p : presets) {
             p.setTextColor(c);
@@ -300,7 +288,14 @@ final class PageView extends FrameLayout {
         }
     }
 
-    /** A rounded outline in the text colour, with a faint fill while pressed. */
+    /** A seat button's outline: the border shows what the next tap does (grey when unavailable). */
+    private android.graphics.drawable.Drawable seatOutline(int seat) {
+        int k = tapKindNow[seat];
+        int border = k == 1 ? COLOR_HEAT : k == 2 ? COLOR_COOL : COLOR_OFF;
+        return outline(border, 12);
+    }
+
+    /** A rounded outline in the given colour, with a faint fill while pressed. */
     private android.graphics.drawable.Drawable outline(int color, int radiusDp) {
         GradientDrawable normal = new GradientDrawable();
         normal.setColor(Color.TRANSPARENT);

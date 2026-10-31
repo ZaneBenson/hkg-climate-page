@@ -172,6 +172,8 @@ check "panel class names in the dex listing are only k" no_output bad_panel_refs
 check "our subclasses of k use only allowed inherited members" no_output bad_inherited_refs "$TMP/dex.txt" "$TMP/dexcode.txt"
 check "the inherited member check sees ClimatePage extending k" \
     sh -c "grep -q 'ClimatePage;\.mView' $TMP/dexcode.txt"
+check "the page has no test mode strip text" sh -c "! grep -q 'Test mode: taps are logged' $TMP/dexcode.txt"
+check "the page does not read the test mode key" sh -c "! grep -q 'testMode' $TMP/dex.txt"
 check "the page declares no field named viewId" sh -c "! grep -q 'viewId' $TMP/dex.txt"
 check "code reaches k.mContext" has_ref "$TMP/dexcode.txt" '\.mContext'
 check "code reads the uiMode of the configuration" has_ref "$TMP/dexcode.txt" 'Landroid/content/res/Configuration;\.uiMode'
