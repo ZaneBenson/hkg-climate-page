@@ -374,17 +374,22 @@ editor_not_exported() {
         END { flush(); exit !(found && !bad) }' "$1"
 }
 # dialog_only_in_settings <dexdump -d output>: every Landroid/app/AlertDialog reference is in the
-# code of a hkgclimate.app.SettingsActivity method (and the listing has at least one)
+# code of a hkgclimate.app.SettingsActivity method (the delete question) or of the editor's choice
+# list, hkgclimate.app.ChoiceSpinner (and the listing has at least one)
 dialog_only_in_settings() {
     awk '
         /Class descriptor/ { meth = "" }
         /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m }
         index($0, "Landroid/app/AlertDialog") && index($0, "|") {
-            n++; if (index(meth, "hkgclimate.app.SettingsActivity.") != 1) { print; bad++ }
+            n++
+            if (index(meth, "hkgclimate.app.SettingsActivity.") != 1 && index(meth, "hkgclimate.app.ChoiceSpinner.") != 1) { print; bad++ }
         }
         END { exit !(n > 0 && bad == 0) }' "$1"
 }
 scratch_dex dialog Other 'package hkgclimate.app; public class Other { void go(android.content.Context c) { new android.app.AlertDialog.Builder(c).setTitle("x").show(); } }'
+scratch_dex dialog_choice ChoiceSpinner 'package hkgclimate.app; class ChoiceSpinner { void go(android.content.Context c) { new android.app.AlertDialog.Builder(c).setTitle("x").show(); } }'
+scratch_dex dialog_editor PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.app.AlertDialog.Builder(c).setTitle("x").show(); } }'
+scratch_dex dialog_lookalike ChoiceSpinnerTwo 'package hkgclimate.app; class ChoiceSpinnerTwo { void go(android.content.Context c) { new android.app.AlertDialog.Builder(c).setTitle("x").show(); } }'
 check "self-test: the reference check finds a scratch com.hkmc.usm call" has_ref "$ST/caller/code.txt" 'Lcom/hkmc/usm/'
 check "self-test: usm check flags a com.hkmc.usm call from another class" \
     usm_flags "$ST/caller/code.txt" 'Lcom/hkmc/usm/Seat;\.send'
@@ -484,9 +489,16 @@ check "versionCode is 6" grep -q "versionCode='6'" "$TMP/badging"
 # the approval flow is gone: no commander class, no dialog, no preference key
 check "dex has no TestModeCommander class" sh -c "! grep -q 'Lhkgclimate/app/TestModeCommander;' $TMP/dex.txt"
 # the one dialog is the settings screen's "Delete preset?" confirm; nothing else shows one
-check "AlertDialog is referenced only by SettingsActivity (the delete confirm)" dialog_only_in_settings "$TMP/dexcode.txt"
+check "AlertDialog is referenced only by SettingsActivity (the delete confirm) and ChoiceSpinner (the choice lists)" \
+    dialog_only_in_settings "$TMP/dexcode.txt"
 check "self-test: dialog_only_in_settings flags a reference from another class" \
     fails dialog_only_in_settings "$ST/dialog/code.txt"
+check "self-test: dialog_only_in_settings passes a reference from ChoiceSpinner" \
+    dialog_only_in_settings "$ST/dialog_choice/code.txt"
+check "self-test: dialog_only_in_settings flags a reference from the editor itself" \
+    fails dialog_only_in_settings "$ST/dialog_editor/code.txt"
+check "self-test: dialog_only_in_settings flags a reference from a class whose name only starts with ChoiceSpinner" \
+    fails dialog_only_in_settings "$ST/dialog_lookalike/code.txt"
 check "dex strings have no seat_command_approved key" dex_lacks_string "$TMP/classes.dex" seat_command_approved
 check "self-test: dex_has_string finds a string the dex holds" dex_has_string "$TMP/classes.dex" switch_temp_f
 check "sdkVersion is 19" grep -q "^sdkVersion:'19'" "$TMP/badging"
@@ -584,8 +596,8 @@ check "the editor builds its temperature choices with the car's unit (PresetChoi
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.buildViews:' 'Lhkgclimate/core/PresetChoices;\.temperatureChoices'
 check "the editor greys its spinners by climate mode (PresetChoices.greyed)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.applyGreying:' 'Lhkgclimate/core/PresetChoices;\.greyed'
-check "the editor shows each item as a Spinner" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' 'Landroid/widget/Spinner;\.<init>'
+check "the editor shows each item as a Spinner (a ChoiceSpinner, given an adapter)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' 'Landroid/widget/Spinner;\.setAdapter:'
 check "the editor gives each spinner its own fixed view id" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' '\.setId:(I)V'
 check "the editor saves the whole preset (the 12-argument Preset constructor)" \
@@ -806,6 +818,9 @@ finish_guarded() {
 }
 scratch_dex spin1 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.Spinner(c); } }'
 scratch_dex spin2 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.Spinner(c, android.widget.Spinner.MODE_DIALOG); } }'
+scratch_dex spin3 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.TextView(c); } }'
+scratch_dex cs_ok ChoiceSpinner 'package hkgclimate.app; class ChoiceSpinner extends android.widget.Spinner { ChoiceSpinner(android.content.Context c) { super(c, android.widget.Spinner.MODE_DIALOG); } @Override public boolean performClick() { if (!isEnabled()) return false; new android.app.AlertDialog.Builder(getContext()).setSingleChoiceItems(new String[0], 0, null).create().show(); return true; } }'
+scratch_dex cs_bad ChoiceSpinner 'package hkgclimate.app; class ChoiceSpinner extends android.widget.Spinner { ChoiceSpinner(android.content.Context c) { super(c); } @Override public boolean performClick() { return super.performClick(); } }'
 scratch_dex fin_ok PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { try { finish(); } catch (Throwable t) { error.setText("Saved"); } } }'
 scratch_dex fin_bare PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { error.setText("Saved"); finish(); } }'
 scratch_dex fin_quiet PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity extends android.app.Activity { android.widget.TextView error; void save() { error.setText("Saved"); try { finish(); } catch (Throwable t) { error.setText("failed"); } } }'
@@ -813,18 +828,54 @@ scratch_dex fin_none PresetEditorActivity 'package hkgclimate.app; class PresetE
 scratch_dex lis1 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void save(android.widget.Spinner a, android.widget.Spinner b, android.widget.AdapterView.OnItemSelectedListener l) { a.setOnItemSelectedListener(l); } }'
 scratch_dex lis2 PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void save(android.widget.Spinner a, android.widget.Spinner b, android.widget.AdapterView.OnItemSelectedListener l) { a.setOnItemSelectedListener(l); b.setOnItemSelectedListener(l); } }'
 
-check "the editor builds its dropdowns in dialog mode (Spinner(Context, int))" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
-check "the editor never builds a Spinner in the default drop-down mode" \
-    code_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
-check "self-test: the dialog-mode check flags a one-argument Spinner" \
-    fails code_lacks_ref "$ST/spin1/code.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
-check "self-test: the dialog-mode check passes a two-argument Spinner" \
-    code_lacks_ref "$ST/spin2/code.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
-check "self-test: the two-argument constructor shows up in the listing of the dialog-mode scratch editor" \
-    method_has_ref "$ST/spin2/code.txt" 'hkgclimate.app.PresetEditorActivity.go:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
-check "self-test: the two-argument constructor does not show up in the one-argument scratch editor" \
-    fails method_has_ref "$ST/spin1/code.txt" 'hkgclimate.app.PresetEditorActivity.go:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
+check "the editor builds each dropdown as a ChoiceSpinner" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' 'Lhkgclimate/app/ChoiceSpinner;\.<init>:(Landroid/content/Context;Ljava/lang/String;\[Ljava/lang/String;)V'
+check "the editor never builds a platform Spinner itself (any constructor)" \
+    code_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>'
+check "self-test: the no-platform-Spinner check flags a one-argument Spinner in the editor" \
+    fails code_lacks_ref "$ST/spin1/code.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>'
+check "self-test: the no-platform-Spinner check flags a dialog-mode Spinner in the editor" \
+    fails code_lacks_ref "$ST/spin2/code.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>'
+check "self-test: the no-platform-Spinner check passes an editor without one" \
+    code_lacks_ref "$ST/spin3/code.txt" 'hkgclimate.app.PresetEditorActivity' 'Landroid/widget/Spinner;.<init>'
+check "ChoiceSpinner is a Spinner that falls back to dialog mode (Spinner(Context, int))" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.<init>:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
+check "ChoiceSpinner never uses the drop-down mode constructor" \
+    code_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
+check "ChoiceSpinner opens a single-choice list in our own AlertDialog (scrollable)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'AlertDialog\$Builder;\.setSingleChoiceItems:'
+check "ChoiceSpinner shows the dialog" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'AlertDialog;\.show:()V'
+check "ChoiceSpinner places the dialog in the column (Column.place)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'Lhkgclimate/app/Column;\.place:'
+check "ChoiceSpinner opens nothing when disabled (isEnabled is read in performClick)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' '\.isEnabled:()Z'
+check "ChoiceSpinner does not fall back to the platform popup (no Spinner.performClick call)" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'Landroid/widget/Spinner;\.performClick'
+check "ChoiceSpinner closes its dialog when the view leaves the window" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.onDetachedFromWindow:' 'ChoiceSpinner;\.dismissDialog:'
+check "ChoiceSpinner.dismissDialog dismisses the dialog" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ChoiceSpinner.dismissDialog:' '\.dismiss:()V'
+check "self-test: the dialog-mode constructor check passes the good scratch class" \
+    method_has_ref "$ST/cs_ok/code.txt" 'hkgclimate.app.ChoiceSpinner.<init>:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
+check "self-test: the list check passes the good scratch class" \
+    method_has_ref "$ST/cs_ok/code.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'AlertDialog\$Builder;\.setSingleChoiceItems:'
+check "self-test: the show check passes the good scratch class" \
+    method_has_ref "$ST/cs_ok/code.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'AlertDialog;\.show:()V'
+check "self-test: the disabled check passes the good scratch class" \
+    method_has_ref "$ST/cs_ok/code.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' '\.isEnabled:()Z'
+check "self-test: the disabled check fails the bad scratch class" \
+    fails method_has_ref "$ST/cs_bad/code.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' '\.isEnabled:()Z'
+check "self-test: the drop-down constructor check passes the good scratch class" \
+    code_lacks_ref "$ST/cs_ok/code.txt" 'hkgclimate.app.ChoiceSpinner' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
+check "self-test: the dialog-mode constructor check fails the bad scratch class" \
+    fails method_has_ref "$ST/cs_bad/code.txt" 'hkgclimate.app.ChoiceSpinner.<init>:' 'Landroid/widget/Spinner;\.<init>:(Landroid/content/Context;I)V'
+check "self-test: the drop-down constructor check flags the bad scratch class" \
+    fails code_lacks_ref "$ST/cs_bad/code.txt" 'hkgclimate.app.ChoiceSpinner' 'Landroid/widget/Spinner;.<init>:(Landroid/content/Context;)V'
+check "self-test: the list check fails the bad scratch class (no AlertDialog list)" \
+    fails method_has_ref "$ST/cs_bad/code.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'AlertDialog\$Builder;\.setSingleChoiceItems:'
+check "self-test: the platform-popup check flags the bad scratch class (it calls Spinner.performClick)" \
+    fails method_lacks_ref "$ST/cs_bad/code.txt" 'hkgclimate.app.ChoiceSpinner.performClick:' 'Landroid/widget/Spinner;\.performClick'
 
 check "the editor has a driver temperature dropdown (item name for the greying)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.buildViews:' 'const-string.*"driverTemp"'
@@ -870,14 +921,14 @@ check "the column is never wider than the screen (Math.min in widthPx)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Column.widthPx:' 'Ljava/lang/Math;\.min:(II)I'
 check "the preset buttons share the row's width (weighted LinearLayout.LayoutParams)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.addToRow:' 'LinearLayout\$LayoutParams;\.<init>:(IIF)V'
-check "the delete question is sized by Window.setLayout" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.narrow:' 'Landroid/view/Window;\.setLayout:(II)V'
-check "the delete question is put at the left edge (Window.setGravity)" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.narrow:' 'Landroid/view/Window;\.setGravity:(I)V'
-check "the delete question's width comes from the column" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.narrow:' 'Lhkgclimate/app/Column;\.widthPx:'
-check "the delete confirm narrows its dialog" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.confirmDelete:' 'SettingsActivity;\.narrow:'
+check "dialogs are sized by Window.setLayout in Column.place" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Column.place:' 'Landroid/view/Window;\.setLayout:(II)V'
+check "dialogs are put at the left edge (Window.setGravity in Column.place)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Column.place:' 'Landroid/view/Window;\.setGravity:(I)V'
+check "a dialog's width comes from the column (Column.place uses widthPx)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Column.place:' 'Lhkgclimate/app/Column;\.widthPx:'
+check "the delete confirm places its dialog in the column (Column.place)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.confirmDelete:' 'Lhkgclimate/app/Column;\.place:'
 check "Add preset is limited at six (refreshPresets compares the list size with 6)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.SettingsActivity.refreshPresets:' '#int 6 '
 check "self-test: the limit check does not see a 7 in refreshPresets" \

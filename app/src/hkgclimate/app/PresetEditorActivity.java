@@ -24,8 +24,9 @@ import java.util.List;
 /**
  * Adds or edits one preset: a name and a dropdown for each item, in this order: driver seat,
  * passenger seat, steering wheel, eco, climate, driver temperature, passenger temperature, fan, A/C,
- * airflow, sync. Every dropdown is a Spinner in dialog mode (a centred list that scrolls), and the
- * content sits in the narrow column beside the split-screen panel (Column). Started only
+ * airflow, sync. Every dropdown is a ChoiceSpinner: it opens its own scrollable list dialog, placed
+ * at the left edge and no wider than the column, and the content sits in the same narrow column,
+ * beside the split-screen panel (Column). Started only
  * by our SettingsActivity (not exported). Extras: "index" (the slot being edited, -1 for a new
  * preset), "drvOption" / "astOption" (the seats' raw option values from the settings screen's last
  * state; missing or unknown means heat and cool) and "unit" (the car's temperature unit from that
@@ -288,7 +289,7 @@ public class PresetEditorActivity extends Activity {
         TextView label = text(title, 22);
         label.setPadding(0, dp(24), 0, dp(8));
         root.addView(label);
-        Spinner spinner = new Spinner(this, Spinner.MODE_DIALOG);
+        Spinner spinner = new ChoiceSpinner(this, title, labels);
         spinner.setId(id);
         spinner.setAdapter(new SizedAdapter(this, labels));
         spinner.setSelection(selected);

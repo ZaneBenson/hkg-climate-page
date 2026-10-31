@@ -16,8 +16,6 @@ import android.os.Parcel;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
@@ -340,23 +338,9 @@ public class SettingsActivity extends Activity {
                     .setNegativeButton("Cancel", null)
                     .create();
             dialog.show();
-            narrow(dialog);
+            Column.place(this, dialog);
         } catch (Throwable t) {
             Log.w(TAG, "settings could not show the delete question", t);
-        }
-    }
-
-    /**
-     * Keeps the dialog no wider than the column and against the left edge, clear of the right-hand
-     * panel. A failure here only leaves the dialog where the system put it.
-     */
-    private void narrow(AlertDialog dialog) {
-        try {
-            Window w = dialog.getWindow();
-            w.setLayout(Column.widthPx(this), WindowManager.LayoutParams.WRAP_CONTENT);
-            w.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
-        } catch (Throwable t) {
-            Log.w(TAG, "settings could not place the delete question", t);
         }
     }
 
