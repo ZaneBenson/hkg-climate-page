@@ -653,8 +653,8 @@ check "ClimateService builds the PresetRunner" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/PresetRunner;\.<init>'
 check "ClimateService builds the CabinStateReader" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/app/CabinStateReader;\.<init>'
-check "ClimateService passes the runner to the ClimateCore (the 3-argument constructor)" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/ClimateCore;\.<init>:(Lhkgclimate/core/SeatCommander;ILhkgclimate/core/PresetRunner;)V'
+check "ClimateService passes the runner and a clock to the ClimateCore (the 4-argument constructor)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/ClimateCore;\.<init>:(Lhkgclimate/core/SeatCommander;ILhkgclimate/core/PresetRunner;Lhkgclimate/core/Clock;)V'
 check "the runner's scheduler posts to the main looper's Handler (postDelayed, never inline)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService$MainScheduler.after:' 'Landroid/os/Handler;\.postDelayed:'
 check "the scheduler never runs the task itself" \

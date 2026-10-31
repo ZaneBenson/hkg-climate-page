@@ -18,7 +18,12 @@ public class ClimateCorePresetTest {
     }
 
     private final Recorder rec = new Recorder();
-    private final ClimateCore core = new ClimateCore(rec, 60, null);
+    /** The time the core's clock reports. */
+    private long now;
+    private final Clock clock = new Clock() {
+        public long now() { return now; }
+    };
+    private final ClimateCore core = new ClimateCore(rec, 60, null, clock);
     private int changes;
 
     private void ready(int driver, int passenger) {
@@ -81,7 +86,7 @@ public class ClimateCorePresetTest {
     public void coolTargetSkippedForEveryCoolValueWhenOptionIsNotSix() {
         for (int v = 3; v <= 5; v++) {
             Recorder r = new Recorder();
-            ClimateCore c = new ClimateCore(r, 60, null);
+            ClimateCore c = new ClimateCore(r, 60, null, clock);
             c.onSeatsReady(true);
             c.onSeatOption(Seat.DRIVER, 5);
             c.onSeatState(Seat.DRIVER, 2);
@@ -250,7 +255,9 @@ public class ClimateCorePresetTest {
                 new PresetRunner(new CheckedCabinSender(car, log), car, sched, log);
         final ClimateCore core = new ClimateCore(new SeatCommander() {
             public void set(Seat seat, int value) { car.calls.add(seat + "=" + value); }
-        }, 60, runner);
+        }, 60, runner, new Clock() {
+            public long now() { return sched.now; }
+        });
 
         void ready(int driver, int passenger) {
             core.onSeatsReady(true);
@@ -344,5 +351,330 @@ public class ClimateCorePresetTest {
         assertEquals(a, core.pageState());
         assertEquals(a.hashCode(), core.pageState().hashCode());
         assertNull(core.pageState().presetNames[1]);
+    }
+
+
+    // the applied-preset highlight
+
+    private int active() {
+        assertEquals(core.activePreset(), core.pageState().presetActive);
+        return core.activePreset();
+    }
+
+    private static int active(WithRunner w) {
+        assertEquals(w.core.activePreset(), w.core.pageState().presetActive);
+        return w.core.activePreset();
+    }
+
+    private static void check(WithRunner w) {
+        w.core.onHighlightCheck(w.car.read(), w.sched.now);
+    }
+
+    @Test
+    public void highlightFromTapToDrift() {
+        ready(2, 2);
+        core.setPresets(Arrays.asList(new Preset("A", 8, 5), new Preset("B", 7, 7)));
+        core.setListener(new Runnable() { public void run() { changes++; } });
+        assertEquals(-1, active());
+        assertEquals(2, core.onPresetTap(0, 1));
+        assertEquals(0, active());
+        assertEquals(1, changes);
+        core.onSeatState(Seat.DRIVER, 8);
+        core.onSeatState(Seat.PASSENGER, 5);
+        now = 3000;
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        now = 10000;
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        // the driver turned the seat down: the highlight goes for good
+        core.onSeatState(Seat.DRIVER, 7);
+        assertEquals(-1, active());
+        core.onSeatState(Seat.DRIVER, 8);
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(-1, active());
+        assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=5"), rec.sent);
+    }
+
+    @Test
+    public void seatStateGetsThreeSecondsAfterTheTap() {
+        // Review Focus 2: a seat-only preset keeps its highlight while the seat listener catches up
+        ready(2, 2);
+        core.setPresets(one(8, 5));
+        now = 1000;
+        assertEquals(2, core.onPresetTap(0, 1));
+        now = 1500;
+        core.onSeatState(Seat.DRIVER, 6);
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        now = 2500;
+        core.onSeatState(Seat.DRIVER, 8);
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        // the passenger still reads off 2999 ms after the tap: not yet drift
+        now = 3999;
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        core.onSeatState(Seat.PASSENGER, 5);
+        now = 4000;
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        assertEquals(3000, ClimateCore.SEAT_GRACE_MS);
+        assertEquals(2000, ClimateCore.HIGHLIGHT_POLL_MS);
+    }
+
+    @Test
+    public void aSeatThatNeverArrivesClearsTheHighlightAfterThreeSeconds() {
+        ready(2, 2);
+        core.setPresets(one(8, 5));
+        assertEquals(2, core.onPresetTap(0, 1));
+        core.onSeatState(Seat.DRIVER, 8);
+        now = 2999;
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        now = 3000;
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(-1, active());
+    }
+
+    @Test
+    public void aSeatChangeAfterTheGraceIsCheckedAtOnce() {
+        // Ruling 2: seat drift arrives through the seat listener
+        ready(2, 2);
+        core.setPresets(one(8, Preset.LEAVE));
+        assertEquals(1, core.onPresetTap(0, 1));
+        core.onSeatState(Seat.DRIVER, 8);
+        now = 5000;
+        // a seat the preset leaves alone does not count
+        core.onSeatState(Seat.PASSENGER, 6);
+        assertEquals(0, active());
+        core.onSeatState(Seat.DRIVER, 2);
+        assertEquals(-1, active());
+    }
+
+    @Test
+    public void seatsGoingNotReadyAfterTheGraceIsDrift() {
+        ready(8, 2);
+        core.setPresets(one(8, Preset.LEAVE));
+        assertEquals(0, core.onPresetTap(0, 1));
+        now = 3000;
+        core.onSeatsReady(false);
+        assertEquals(-1, active());
+    }
+
+    @Test
+    public void aTapThatNeededNoCommandsStillHighlights() {
+        ready(8, 5);
+        core.setPresets(one(8, 5));
+        assertEquals(0, core.onPresetTap(0, 1));
+        assertEquals(0, active());
+        now = 3000;
+        core.onHighlightCheck(CabinState.NONE, now);
+        assertEquals(0, active());
+        assertTrue(rec.sent.isEmpty());
+    }
+
+    @Test
+    public void aCoolTargetOnAHeatOnlySeatOrAnUnknownSeatDoesNotCount() {
+        ready(2, 9);
+        core.onSeatOption(Seat.DRIVER, 0);
+        core.setPresets(one(5, 8));
+        assertEquals(0, core.onPresetTap(0, 1));
+        assertEquals(0, active());
+        now = 5000;
+        core.onHighlightCheck(CabinState.NONE, now);
+        core.onSeatState(Seat.PASSENGER, 2);
+        assertEquals(0, active());
+    }
+
+    @Test
+    public void aSeatOnlyTapWhileSeatsAreNotReadyDoesNotHighlightAndClearsTheLast() {
+        ready(2, 2);
+        core.setPresets(Arrays.asList(new Preset("A", 8, 8), new Preset("B", 7, 7)));
+        assertEquals(2, core.onPresetTap(0, 1));
+        assertEquals(0, active());
+        core.onSeatsReady(false);
+        assertEquals(0, core.onPresetTap(1, 2));
+        assertEquals(-1, active());
+    }
+
+    @Test
+    public void anotherPresetTapMovesTheHighlight() {
+        ready(2, 2);
+        core.setPresets(Arrays.asList(new Preset("A", 8, 8), new Preset("B", 7, 7)));
+        core.onPresetTap(0, 1);
+        assertEquals(0, active());
+        core.onPresetTap(1, 2);
+        assertEquals(1, active());
+    }
+
+    @Test
+    public void refusedTapsLeaveTheHighlightAlone() {
+        ready(2, 2);
+        core.setPresets(Arrays.asList(new Preset("A", 8, 8), new Preset("B", 7, 7)));
+        core.onPresetTap(0, 1);
+        assertEquals(0, core.onPresetTap(1, 1));
+        assertEquals(0, core.onPresetTap(4, 2));
+        assertEquals(0, active());
+    }
+
+    @Test
+    public void editingDeletingOrReorderingPresetsClearsTheHighlight() {
+        ready(2, 2);
+        List<Preset> two = Arrays.asList(new Preset("A", 8, 8), new Preset("B", 7, 7));
+        core.setPresets(two);
+        core.onPresetTap(0, 1);
+        // the same presets again (a reload): kept
+        core.setPresets(new ArrayList<Preset>(two));
+        assertEquals(0, active());
+        // edited
+        core.setPresets(Arrays.asList(new Preset("A", 8, 7), new Preset("B", 7, 7)));
+        assertEquals(-1, active());
+        // reordered
+        core.setPresets(two);
+        core.onPresetTap(0, 2);
+        core.setPresets(Arrays.asList(two.get(1), two.get(0)));
+        assertEquals(-1, active());
+        // deleted
+        core.setPresets(two);
+        core.onPresetTap(1, 3);
+        assertEquals(1, active());
+        core.setPresets(Arrays.asList(two.get(0)));
+        assertEquals(-1, active());
+    }
+
+    @Test
+    public void theHighlightHoldsDuringTheRunAndClearsWhenADoneItemDrifts() {
+        WithRunner w = new WithRunner();
+        w.ready(2, 2);
+        w.core.setPresets(Arrays.asList(new Preset("T", 8, L, 1, L, L, 70, L, L, L, L, L)));
+        assertEquals(2, w.core.onPresetTap(0, 1));
+        assertEquals(0, active(w));
+        w.core.onSeatState(Seat.DRIVER, 8);
+        // mid-run the car does not match yet
+        w.sched.advance(450);
+        assertTrue(w.runner.busy());
+        check(w);
+        assertEquals(0, active(w));
+        w.sched.runAll();
+        assertFalse(w.runner.busy());
+        check(w);
+        assertEquals(0, active(w));
+        w.car.wheel = 0;
+        check(w);
+        assertEquals(-1, active(w));
+    }
+
+    @Test
+    public void aSkippedPassengerDoesNotCount() {
+        // Review Focus 2: the car is synced, so the passenger is skipped ("sync on")
+        WithRunner w = new WithRunner();
+        w.car.sync = 1;
+        w.core.setPresets(Arrays.asList(new Preset("T", L, L, L, L, L, 70, 74, L, L, L, L)));
+        assertEquals(1, w.core.onPresetTap(0, 1));
+        w.sched.runAll();
+        assertTrue(w.runner.lastResult(), w.runner.lastResult().contains("sync on"));
+        w.sched.advance(5000);
+        check(w);
+        assertEquals(70f, w.car.passengerTemp, 0f);
+        assertEquals(0, active(w));
+        w.car.driverTemp = 71f;
+        check(w);
+        assertEquals(-1, active(w));
+    }
+
+    @Test
+    public void aPassengerFollowingSyncDoesNotCount() {
+        // Review Focus 2: a preset with Sync on; the passenger's own reading lags the driver's
+        WithRunner w = new WithRunner();
+        w.car.passengerLags = true;
+        w.car.sync = 1;
+        w.core.setPresets(Arrays.asList(new Preset("T", L, L, L, L, L, 70, L, L, L, L, 1)));
+        assertEquals(1, w.core.onPresetTap(0, 1));
+        w.sched.runAll();
+        w.sched.advance(5000);
+        check(w);
+        assertEquals(72f, w.car.passengerTemp, 0f);
+        assertEquals(0, active(w));
+    }
+
+    @Test
+    public void aRunThatNeededNothingStillHighlights() {
+        WithRunner w = new WithRunner();
+        w.car.wheel = 1;
+        w.core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L, L)));
+        assertEquals(1, w.core.onPresetTap(0, 1));
+        assertTrue(w.runner.lastRunNeededNothing());
+        assertEquals(0, active(w));
+        w.sched.advance(5000);
+        check(w);
+        assertEquals(0, active(w));
+        w.car.wheel = 0;
+        check(w);
+        assertEquals(-1, active(w));
+    }
+
+    @Test
+    public void aNotDoneItemDoesNotCount() {
+        WithRunner w = new WithRunner();
+        w.car.deaf = true;
+        w.core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L, L)));
+        w.core.onPresetTap(0, 1);
+        w.sched.runAll();
+        check(w);
+        assertEquals(0, active(w));
+    }
+
+    @Test
+    public void aSeatChangeUsesTheLastCabinStateAfterTheRunNeverOneFromBeforeTheTap() {
+        // Ruling 2
+        WithRunner w = new WithRunner();
+        w.ready(2, 2);
+        w.core.setPresets(Arrays.asList(new Preset("S", 8, L),
+                new Preset("T", 8, L, 1, L, L, L, L, L, L, L, L)));
+        // a reading taken while another preset was highlighted, with the wheel off
+        w.core.onPresetTap(0, 1);
+        check(w);
+        assertEquals(0, active(w));
+        // the seat (still reading off) is sent again; the wheel press waits 400 ms
+        assertEquals(2, w.core.onPresetTap(1, 2));
+        assertEquals(1, active(w));
+        // a reading taken during the run, before the wheel press: not kept
+        assertEquals(0, w.car.wheel);
+        assertTrue(w.runner.busy());
+        check(w);
+        w.sched.runAll();
+        w.sched.advance(5000);
+        w.core.onSeatState(Seat.DRIVER, 8);
+        assertEquals(1, active(w));
+        check(w);
+        assertEquals(1, active(w));
+        // the wheel goes off; a seat change re-checks with the last reading (still on): kept
+        w.car.wheel = 0;
+        w.core.onSeatState(Seat.PASSENGER, 6);
+        assertEquals(1, active(w));
+        check(w);
+        assertEquals(-1, active(w));
+    }
+
+    @Test
+    public void swapAndOffDoNothingWhileAPresetRuns() {
+        // Review Focus 5
+        WithRunner w = new WithRunner();
+        w.ready(2, 7);
+        w.core.onOutside(OutsideTemp.of(9f, 0xffff, 48f, 0xffff));
+        w.core.setPresets(Arrays.asList(new Preset("T", L, L, L, L, L, 70, 70, L, L, L, L)));
+        assertEquals(1, w.core.onPresetTap(0, 1));
+        assertTrue(w.runner.busy());
+        PageState before = w.core.pageState();
+        assertFalse(w.core.onSeatSwap(Seat.DRIVER, 2));
+        assertFalse(w.core.onSeatOff(Seat.PASSENGER, 3));
+        assertEquals(before, w.core.pageState());
+        assertEquals(Arrays.asList("climate 50 2"), w.car.calls);
+        w.sched.runAll();
+        assertTrue(w.core.onSeatSwap(Seat.DRIVER, 4));
+        assertEquals(2, w.core.pageState().seatTapKind[Seat.DRIVER.ordinal()]);
+        assertTrue(w.core.onSeatOff(Seat.PASSENGER, 5));
+        assertEquals("PASSENGER=2", w.car.calls.get(w.car.calls.size() - 1));
     }
 }

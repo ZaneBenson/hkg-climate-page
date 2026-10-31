@@ -21,7 +21,12 @@ public class ClimateCoreTest {
     }
 
     private final Recorder rec = new Recorder();
-    private final ClimateCore core = new ClimateCore(rec, 60, null);
+    /** The time the core's clock reports. */
+    private long now;
+    private final Clock clock = new Clock() {
+        public long now() { return now; }
+    };
+    private final ClimateCore core = new ClimateCore(rec, 60, null, clock);
 
     private void ready(int driver, int passenger, OutsideTemp outside) {
         core.onSeatsReady(true);
@@ -60,7 +65,7 @@ public class ClimateCoreTest {
         int[] bad = {0, 9, -1};
         for (int v : bad) {
             Recorder r = new Recorder();
-            ClimateCore c = new ClimateCore(r, 60, null);
+            ClimateCore c = new ClimateCore(r, 60, null, clock);
             c.onSeatsReady(true);
             c.onSeatOption(Seat.DRIVER, 6);
             c.onSeatState(Seat.DRIVER, v);
@@ -152,7 +157,7 @@ public class ClimateCoreTest {
 
     @Test
     public void topLineTexts() {
-        ClimateCore c = new ClimateCore(rec, 60, null);
+        ClimateCore c = new ClimateCore(rec, 60, null, clock);
         // nothing received yet
         assertEquals("Outside temperature unknown", c.pageState().top);
 
@@ -237,7 +242,7 @@ public class ClimateCoreTest {
                             continue;
                         }
                         Recorder r = new Recorder();
-                        ClimateCore c = new ClimateCore(r, 60, null);
+                        ClimateCore c = new ClimateCore(r, 60, null, clock);
                         c.onSeatsReady(true);
                         c.onSeatOption(Seat.DRIVER, option);
                         c.onSeatOption(Seat.PASSENGER, option);
@@ -354,5 +359,199 @@ public class ClimateCoreTest {
         assertEquals(-1, core.seatValue(Seat.PASSENGER));
         core.onSeatState(Seat.DRIVER, 9);
         assertEquals(9, core.seatValue(Seat.DRIVER));
+    }
+
+
+    // swap and ×
+
+    private boolean swap(Seat s) { return core.pageState().seatSwap[s.ordinal()]; }
+
+    private boolean off(Seat s) { return core.pageState().seatOff[s.ordinal()]; }
+
+    @Test
+    public void swapOnAHeatOnlySeatChangesNothingAndSendsNothing() {
+        // Review Focus 5
+        ready(2, 2, F48);
+        core.onSeatOption(Seat.DRIVER, 0);
+        PageState before = core.pageState();
+        final int[] calls = {0};
+        core.setListener(new Runnable() { public void run() { calls[0]++; } });
+        assertFalse(core.onSeatSwap(Seat.DRIVER, 1));
+        assertEquals(before, core.pageState());
+        assertEquals(0, calls[0]);
+        assertFalse(swap(Seat.DRIVER));
+        assertTrue(rec.sent.isEmpty());
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=8]", rec.sent.toString());
+    }
+
+    @Test
+    public void swapOnAnOnSeatChangesNothingAndSendsNothing() {
+        // Review Focus 5
+        ready(7, 4, F48);
+        PageState before = core.pageState();
+        assertFalse(core.onSeatSwap(Seat.DRIVER, 1));
+        assertFalse(core.onSeatSwap(Seat.PASSENGER, 2));
+        assertEquals(before, core.pageState());
+        assertTrue(rec.sent.isEmpty());
+        // the override did not stick: off again, the automatic choice (heat at 48) holds
+        core.onSeatState(Seat.DRIVER, 2);
+        assertEquals(1, tapKind(Seat.DRIVER));
+    }
+
+    @Test
+    public void swapOnAnUnknownOrNotReadySeatChangesNothing() {
+        ready(9, 2, F48);
+        assertFalse(core.onSeatSwap(Seat.DRIVER, 1));
+        core.onSeatsReady(false);
+        assertFalse(core.onSeatSwap(Seat.PASSENGER, 2));
+        core.onSeatsReady(true);
+        assertEquals(1, tapKind(Seat.PASSENGER));
+        assertTrue(rec.sent.isEmpty());
+    }
+
+    @Test
+    public void swapFlipsTheTapKindAndTheNextTapUsesIt() {
+        ready(2, 2, F48);
+        assertEquals(1, tapKind(Seat.DRIVER));
+        final int[] calls = {0};
+        core.setListener(new Runnable() { public void run() { calls[0]++; } });
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 1));
+        assertEquals(1, calls[0]);
+        assertEquals(2, tapKind(Seat.DRIVER));
+        assertEquals(1, tapKind(Seat.PASSENGER));
+        assertTrue(rec.sent.isEmpty());
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=5]", rec.sent.toString());
+        // swapping back returns to the automatic choice
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 3));
+        assertEquals(1, tapKind(Seat.DRIVER));
+        assertTrue(core.onTap(Seat.DRIVER, 4));
+        assertEquals("DRIVER=8", rec.sent.get(1));
+    }
+
+    @Test
+    public void swapOnAWarmDayTurnsTheNextTapToHeat() {
+        ready(2, 2, F70);
+        assertTrue(core.onSeatSwap(Seat.PASSENGER, 1));
+        assertEquals(1, tapKind(Seat.PASSENGER));
+        assertTrue(core.onTap(Seat.PASSENGER, 2));
+        assertEquals("[PASSENGER=8]", rec.sent.toString());
+    }
+
+    @Test
+    public void theSwapEndsWhenTheSeatTurnsOn() {
+        ready(2, 2, F48);
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 1));
+        assertEquals(2, tapKind(Seat.DRIVER));
+        core.onSeatState(Seat.DRIVER, 5);
+        assertEquals(2, tapKind(Seat.DRIVER));
+        core.onSeatState(Seat.DRIVER, 2);
+        // off again: the automatic choice (heat at 48) is back
+        assertEquals(1, tapKind(Seat.DRIVER));
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=8]", rec.sent.toString());
+    }
+
+    @Test
+    public void aSwapIsIgnoredIfTheSeatLosesItsCoolOption() {
+        ready(2, 2, F48);
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 1));
+        core.onSeatOption(Seat.DRIVER, 0);
+        assertEquals(1, tapKind(Seat.DRIVER));
+        assertFalse(swap(Seat.DRIVER));
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=8]", rec.sent.toString());
+    }
+
+    @Test
+    public void swapRequestIdsAreSharedWithTaps() {
+        ready(2, 2, F48);
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 1));
+        assertFalse(core.onSeatSwap(Seat.DRIVER, 1));
+        assertEquals(2, tapKind(Seat.DRIVER));
+        assertFalse(core.onTap(Seat.DRIVER, 1));
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertFalse(core.onSeatSwap(Seat.PASSENGER, 2));
+        assertEquals(1, tapKind(Seat.PASSENGER));
+        assertEquals("[DRIVER=5]", rec.sent.toString());
+    }
+
+    @Test
+    public void offSendsExactlyOneTwoForAnOnSeat() {
+        ready(7, 4, F48);
+        assertTrue(core.onSeatOff(Seat.DRIVER, 1));
+        assertEquals("[DRIVER=2]", rec.sent.toString());
+        assertFalse(core.onSeatOff(Seat.DRIVER, 1));
+        assertEquals(1, rec.sent.size());
+        assertTrue(core.onSeatOff(Seat.PASSENGER, 2));
+        assertEquals("[DRIVER=2, PASSENGER=2]", rec.sent.toString());
+    }
+
+    @Test
+    public void offSendsNothingForAnOffUnknownOrNotReadySeat() {
+        ready(2, 9, F48);
+        assertFalse(core.onSeatOff(Seat.DRIVER, 1));
+        assertFalse(core.onSeatOff(Seat.PASSENGER, 2));
+        core.onSeatState(Seat.PASSENGER, 8);
+        core.onSeatsReady(false);
+        assertFalse(core.onSeatOff(Seat.PASSENGER, 3));
+        assertTrue(rec.sent.isEmpty());
+        core.onSeatsReady(true);
+        assertTrue(core.onSeatOff(Seat.PASSENGER, 4));
+        assertEquals("[PASSENGER=2]", rec.sent.toString());
+    }
+
+    @Test
+    public void offRequestIdsAreSharedWithTaps() {
+        ready(7, 2, F48);
+        assertTrue(core.onTap(Seat.DRIVER, 1));
+        assertFalse(core.onSeatOff(Seat.DRIVER, 1));
+        assertEquals("[DRIVER=6]", rec.sent.toString());
+    }
+
+    @Test
+    public void subButtonsShowSwapForAnOffCoolCapableSeatAndOffForAnOnSeat() {
+        ready(2, 7, F48);
+        assertTrue(swap(Seat.DRIVER));
+        assertFalse(off(Seat.DRIVER));
+        assertFalse(swap(Seat.PASSENGER));
+        assertTrue(off(Seat.PASSENGER));
+        core.onSeatOption(Seat.DRIVER, 0);
+        assertFalse(swap(Seat.DRIVER));
+        assertFalse(off(Seat.DRIVER));
+        // a heat-only seat that is on still offers off
+        core.onSeatOption(Seat.PASSENGER, 0);
+        assertTrue(off(Seat.PASSENGER));
+        core.onSeatState(Seat.DRIVER, 9);
+        assertFalse(swap(Seat.DRIVER));
+        assertFalse(off(Seat.DRIVER));
+        core.onSeatsReady(false);
+        assertFalse(off(Seat.PASSENGER));
+        assertEquals(2, core.pageState().seatSwap.length);
+        assertEquals(2, core.pageState().seatOff.length);
+    }
+
+    @Test
+    public void pageStateEqualityCoversSwapOffAndHighlight() {
+        ready(2, 2, F48);
+        PageState a = core.pageState();
+        core.onSeatSwap(Seat.DRIVER, 1);
+        PageState b = core.pageState();
+        assertFalse(a.equals(b));
+        String[] noNames = new String[6];
+        boolean[] noPresets = new boolean[6];
+        PageState x = new PageState("t", new String[2], new int[2], new int[2], new int[2],
+                new boolean[2], noNames, noPresets, -1, new boolean[2], new boolean[2]);
+        PageState y = new PageState("t", new String[2], new int[2], new int[2], new int[2],
+                new boolean[2], noNames, noPresets, -1, new boolean[2], new boolean[2]);
+        assertEquals(x, y);
+        assertEquals(x.hashCode(), y.hashCode());
+        assertFalse(x.equals(new PageState("t", new String[2], new int[2], new int[2], new int[2],
+                new boolean[2], noNames, noPresets, 0, new boolean[2], new boolean[2])));
+        assertFalse(x.equals(new PageState("t", new String[2], new int[2], new int[2], new int[2],
+                new boolean[2], noNames, noPresets, -1, new boolean[] {true, false}, new boolean[2])));
+        assertFalse(x.equals(new PageState("t", new String[2], new int[2], new int[2], new int[2],
+                new boolean[2], noNames, noPresets, -1, new boolean[2], new boolean[] {false, true})));
     }
 }

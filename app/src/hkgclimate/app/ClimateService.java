@@ -129,7 +129,9 @@ public class ClimateService extends Service {
             CheckedCabinSender cabin = new CheckedCabinSender(
                     new StockCabinCalls(new DatcClimateCalls(this), usm), runLog);
             runner = new PresetRunner(cabin, new CabinStateReader(this, usm), new MainScheduler(), runLog);
-            core = new ClimateCore(send, prefs.getSwitchTempF(), runner);
+            core = new ClimateCore(send, prefs.getSwitchTempF(), runner, new Clock() {
+                @Override public long now() { return SystemClock.elapsedRealtime(); }
+            });
             loadPresets();
             car = new CarLink(this, core, watch);
             binder = new PageLinkBinder(core, new PageLinkBinder.DebugSource() {

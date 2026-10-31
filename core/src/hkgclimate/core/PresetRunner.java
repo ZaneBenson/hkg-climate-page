@@ -1,7 +1,10 @@
 package hkgclimate.core;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Applies the steering-wheel, eco and cabin items of a preset (the seats are ClimateCore's), one
@@ -93,8 +96,14 @@ public final class PresetRunner {
     private int unit = CabinState.UNKNOWN;
     private final List<String> done = new ArrayList<String>();
     private final List<String> notDone = new ArrayList<String>();
+    /** The PresetMatch names of the items this run left at their target. */
+    private final Set<String> reached = new LinkedHashSet<String>();
+    /** Commands this run sent. */
+    private int sentCount;
 
     // decide()'s outputs
+    /** decide() returned QUIET for a passenger already at its own target on an unsynced car. */
+    private boolean quietAtTarget;
     private int sendFlag;
     private int sendValue;
     private String why;
@@ -125,6 +134,8 @@ public final class PresetRunner {
         index = 0;
         done.clear();
         notDone.clear();
+        reached.clear();
+        sentCount = 0;
         unit = CabinState.UNKNOWN;
         quietMs = COMMAND_GAP_MS;
         retries = 0;
@@ -149,6 +160,24 @@ public final class PresetRunner {
 
     /** True from start() until the last item is finished. */
     public boolean busy() { return busy; }
+
+    /**
+     * The PresetMatch item names of the items the last run left at their target, whether it
+     * pressed anything or not (a passenger already at its own target on an unsynced car counts).
+     * Items it skipped by design (a passenger following sync or driver-only) or reported not done
+     * are not named. Empty before any run; while a run is busy, the items finished so far.
+     */
+    public Set<String> doneItems() {
+        return Collections.unmodifiableSet(new LinkedHashSet<String>(reached));
+    }
+
+    /**
+     * True after a finished run that sent no command and reported nothing as not done: the car
+     * already matched every item. False before any run and while one is busy.
+     */
+    public boolean lastRunNeededNothing() {
+        return !busy && preset != null && sentCount == 0 && notDone.isEmpty();
+    }
 
     /**
      * One line about the last finished run: what reached its target and what didn't and why, like
@@ -208,10 +237,13 @@ public final class PresetRunner {
         CabinState s = read();
         int d = decide(item, s);
         if (d == DONE) {
-            done.add(label(item) + stepsText(item));
+            markDone(item);
             return false;
         }
-        if (d == QUIET) return false;
+        if (d == QUIET) {
+            if (quietAtTarget) reached.add(nameOf(item));
+            return false;
+        }
         if (d == NOT_DONE) {
             notDone.add(label(item) + " (" + why + ")");
             return false;
@@ -233,6 +265,7 @@ public final class PresetRunner {
             return false;
         }
         presses++;
+        sentCount++;
         if (retrying) retries++;
         retrying = false;
         // the wheel's release is a command too, WHEEL_RELEASE_MS after the press
@@ -293,7 +326,7 @@ public final class PresetRunner {
                 // a forced press (manual in auto) that changed nothing still leaves the item at target
                 int d = decide(item, s);
                 if (d == DONE || (d == QUIET && presses > 0)) {
-                    done.add(label(item) + stepsText(item));
+                    markDone(item);
                 } else if (d != QUIET) {
                     String reason = retries > 0
                             ? NO_CHANGE_RETRIED + (MAX_RETRIES + 1) + " presses" : NO_CHANGE;
@@ -309,6 +342,30 @@ public final class PresetRunner {
         }
         index++;
         begin();
+    }
+
+    /** The item reached its target: named in the result and in doneItems(). */
+    private void markDone(int item) {
+        done.add(label(item) + stepsText(item));
+        reached.add(nameOf(item));
+    }
+
+    /** The item's name as PresetMatch checks it. */
+    private static String nameOf(int item) {
+        switch (item) {
+            case WHEEL: return PresetMatch.WHEEL;
+            case ECO: return PresetMatch.ECO;
+            case CLIMATE_OFF: return PresetMatch.CLIMATE_OFF;
+            case AUTO: return PresetMatch.AUTO;
+            case AC: return PresetMatch.AC;
+            case AIRFLOW: return PresetMatch.AIRFLOW;
+            case FAN: return PresetMatch.FAN;
+            case MANUAL: return PresetMatch.MANUAL;
+            case SYNC: return PresetMatch.SYNC;
+            case DRIVER_TEMP: return PresetMatch.DRIVER_TEMP;
+            case PASSENGER_TEMP: return PresetMatch.PASSENGER_TEMP;
+            default: return "item " + item;
+        }
     }
 
     /**
@@ -379,6 +436,7 @@ public final class PresetRunner {
     private int decide(int item, CabinState s) {
         Preset p = preset;
         pressForced = false;
+        quietAtTarget = false;
         switch (item) {
             case WHEEL:
                 if (!onOff(s.wheel)) return unknown();
@@ -475,7 +533,10 @@ public final class PresetRunner {
             return notDone("sync on");
         }
         if (stepsOf(s.passengerTemp, s.unit) == targetSteps(s.unit, preset.passengerTempF)) {
-            return presses > 0 ? DONE : QUIET;
+            if (presses > 0) return DONE;
+            // not named in the result, but it is at its own target for the highlight
+            quietAtTarget = s.sync == 0 && s.driverOnly == 0;
+            return QUIET;
         }
         if (s.sync != 0) return unknown();
         if (s.driverOnly == 1) return QUIET;
@@ -495,7 +556,7 @@ public final class PresetRunner {
      * The target in steps of the display unit (1 °F, or 0.5 °C as twice the Celsius value),
      * clamped to the stock range 62..82 °F or 17.0..27.0 °C.
      */
-    private static int targetSteps(int unit, int tempF) {
+    static int targetSteps(int unit, int tempF) {
         if (unit == CabinState.UNIT_CELSIUS) {
             int half = (int) Math.round(PresetChoices.celsiusHalf(tempF) * 2);
             return Math.max(34, Math.min(54, half));
@@ -503,7 +564,7 @@ public final class PresetRunner {
         return Math.max(Preset.TEMP_MIN_F, Math.min(Preset.TEMP_MAX_F, tempF));
     }
 
-    private static int stepsOf(float t, int unit) {
+    static int stepsOf(float t, int unit) {
         return unit == CabinState.UNIT_CELSIUS ? Math.round(t * 2) : Math.round(t);
     }
 
@@ -513,12 +574,12 @@ public final class PresetRunner {
                 && s.opState == CabinState.OP_ON && s.auto == 1;
     }
 
-    private static boolean tempKnown(CabinState s) {
+    static boolean tempKnown(CabinState s) {
         return s.cabinKnown()
                 && (s.unit == CabinState.UNIT_CELSIUS || s.unit == CabinState.UNIT_FAHRENHEIT);
     }
 
-    private static boolean shown(float t) { return !Float.isNaN(t) && t > 0; }
+    static boolean shown(float t) { return !Float.isNaN(t) && t > 0; }
 
     private static boolean onOff(int v) { return v == 0 || v == 1; }
 

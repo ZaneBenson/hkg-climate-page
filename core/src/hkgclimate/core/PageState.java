@@ -10,17 +10,23 @@ public final class PageState {
     public final int[] seatLevel;
     /** 0 off, 1 heat, 2 cool. */
     public final int[] seatKind;
-    /** 1 the seat's next tap heats, 2 it cools, 0 the seat is unavailable. */
+    /** 1 the seat's next tap heats, 2 it cools (a swap included), 0 the seat is unavailable. */
     public final int[] seatTapKind;
     public final boolean[] seatEnabled;
-    /** Always 4 entries: the name of the preset in each slot, null for an empty slot. */
+    /** PresetList.MAX entries: the name of the preset in each slot, null for an empty slot. */
     public final String[] presetNames;
-    /** Always 4 entries: true when the slot has a preset and the seats are ready. */
+    /** PresetList.MAX entries: true when the slot has a preset that a tap can apply now. */
     public final boolean[] presetEnabled;
+    /** The slot of the applied preset to highlight, or -1 for none. */
+    public final int presetActive;
+    /** True when the seat's sub-button offers swap (the seat is off and has heat and cool). */
+    public final boolean[] seatSwap;
+    /** True when the seat's sub-button offers off (the seat is on). */
+    public final boolean[] seatOff;
 
     public PageState(String top, String[] seatText, int[] seatLevel, int[] seatKind,
             int[] seatTapKind, boolean[] seatEnabled, String[] presetNames,
-            boolean[] presetEnabled) {
+            boolean[] presetEnabled, int presetActive, boolean[] seatSwap, boolean[] seatOff) {
         this.top = top;
         this.seatText = seatText;
         this.seatLevel = seatLevel;
@@ -29,6 +35,9 @@ public final class PageState {
         this.seatEnabled = seatEnabled;
         this.presetNames = presetNames;
         this.presetEnabled = presetEnabled;
+        this.presetActive = presetActive;
+        this.seatSwap = seatSwap;
+        this.seatOff = seatOff;
     }
 
     @Override
@@ -43,7 +52,10 @@ public final class PageState {
                 && Arrays.equals(seatTapKind, p.seatTapKind)
                 && Arrays.equals(seatEnabled, p.seatEnabled)
                 && Arrays.equals(presetNames, p.presetNames)
-                && Arrays.equals(presetEnabled, p.presetEnabled);
+                && Arrays.equals(presetEnabled, p.presetEnabled)
+                && presetActive == p.presetActive
+                && Arrays.equals(seatSwap, p.seatSwap)
+                && Arrays.equals(seatOff, p.seatOff);
     }
 
     @Override
@@ -55,6 +67,9 @@ public final class PageState {
         h = 31 * h + Arrays.hashCode(seatTapKind);
         h = 31 * h + Arrays.hashCode(seatEnabled);
         h = 31 * h + Arrays.hashCode(presetNames);
-        return 31 * h + Arrays.hashCode(presetEnabled);
+        h = 31 * h + Arrays.hashCode(presetEnabled);
+        h = 31 * h + presetActive;
+        h = 31 * h + Arrays.hashCode(seatSwap);
+        return 31 * h + Arrays.hashCode(seatOff);
     }
 }
