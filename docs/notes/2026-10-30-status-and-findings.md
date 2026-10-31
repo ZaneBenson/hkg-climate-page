@@ -20,7 +20,7 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Plan 3 (test build 2: approved seat command behind an approval switch) | Installed and tested on the owner's car (2026-10-30): seat taps change both seats through heat and cool. |
 | Plan 4 (version 1: owner's layout changes, taps always send, install message for low /system space) | Built (1.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-version-1.md`. |
 | Plan 5 (version 2: presets of the seat settings, up to 4, applied from the page) | Built (2.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-presets.md`. |
-| Branches | Version 1 and presets are built on branches `version-1` and `presets` (stacked), not merged into `main` yet. |
+| Branches | Version 1 and presets merged into `main` (2026-10-30). |
 
 ## Seat command approval (2026-10-30)
 
@@ -38,7 +38,9 @@ The owner approved this command for the sending build:
   first, then passenger), all with the approved values above. Nothing is sent at boot or on a
   state update. Owner removed the approval switch for version 1 (2026-10-30); taps send by
   default.
-- Preset behaviour awaiting the owner's confirmation (2026-10-30).
+- **Presets:** owner confirmed the preset behaviour above (2026-10-30). As more settings
+  join, a preset may send one command for each setting it includes; the order is not
+  important to the owner. Each new setting still needs its own log and approval first.
 
 ## Design summary
 

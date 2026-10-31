@@ -65,7 +65,8 @@ Only settings that have passed the command process below appear in the preset ed
 ### 3. Presets
 
 - Tapping a preset button applies its settings, one command per setting, in a fixed order
-  *(builder's call)*, each sent once. No retries, no repeats.
+  *(builder's call; the owner said on 2026-10-30 that the order isn't important)*, each sent
+  once. No retries, no repeats. Owner confirmed this for seats in version 2 (2026-10-30).
 - **Version 2 (2.0.0) does seats only.** A preset has a name (1-10 characters) and a choice
   for each front seat: leave as is, off, heat high/mid/low, or cool high/mid/low (cool only
   on seats with the heat+vent option). At most 4 presets, edited in the settings app (add,
