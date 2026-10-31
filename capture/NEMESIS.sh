@@ -89,9 +89,9 @@ if [ -f "$CURRENT" ]; then
     if alive "$LPID"; then _ran=yes; else _ran=no; fi
     alive "$TPID" && kill "$TPID" 2> /dev/null
     alive "$LPID" && kill "$LPID" 2> /dev/null
-    # let the log close its file before the sync
+    # let the log close its file before the sync, and the timer notice it has ended
     _i=0
-    while alive "$LPID" && [ $_i -lt 5 ]; do sleep 1; _i=$((_i + 1)); done
+    while { alive "$LPID" || alive "$TPID"; } && [ $_i -lt 5 ]; do sleep 1; _i=$((_i + 1)); done
     if [ $_ran = no ]; then
         logcat -d -v threadtime > "$S/logcat-end.txt" 2>&1
     fi
@@ -127,10 +127,20 @@ mkdir -p "$S" || exit 1
 state "$S/state-start.txt"
 
 # the log keeps running after this script returns: ignore the hang-up signal, and stop by
-# itself after MAX_SECONDS in case the second run never comes
+# itself after MAX_SECONDS in case the second run never comes. The timer checks once a second
+# and ends as soon as the log has, so it never outlives it (a signal alone did not stop it
+# under mksh) and never kills a later process that got the log's old pid.
 ( trap '' HUP; exec logcat -v threadtime -f "$S/logcat.txt" -r 8192 -n 8 ) > /dev/null 2>&1 &
 LPID=$!
-( trap '' HUP; sleep "$MAX_SECONDS"; kill "$LPID" ) > /dev/null 2>&1 &
+(
+    trap '' HUP
+    _i=0
+    while alive "$LPID"; do
+        if [ $_i -ge "$MAX_SECONDS" ]; then kill "$LPID"; break; fi
+        sleep 1
+        _i=$((_i + 1))
+    done
+) > /dev/null 2>&1 &
 TPID=$!
 echo "$N $LPID $TPID" > "$CURRENT"
 log -t HkgCapture "capture $N started"
