@@ -464,17 +464,18 @@ public final class PresetRunner {
             if (driverNamed || s.driverOnly == 1) return QUIET;
             return unknown();
         }
-        if (stepsOf(s.passengerTemp, s.unit) == targetSteps(s.unit, preset.passengerTempF)) {
-            return presses > 0 ? DONE : QUIET;
-        }
         if (s.sync == 1) {
-            // the passenger follows the driver, so a target equal to the driver's is met (the
-            // passenger's own reading may lag); any other target would need sync turned off
+            // the passenger follows the driver and its own reading may lag, so a synced car is
+            // judged by the driver's reading alone: a passenger target equal to it is met, any
+            // other target would need sync turned off
             if (shown(s.driverTemp)
                     && stepsOf(s.driverTemp, s.unit) == targetSteps(s.unit, preset.passengerTempF)) {
                 return QUIET;
             }
             return notDone("sync on");
+        }
+        if (stepsOf(s.passengerTemp, s.unit) == targetSteps(s.unit, preset.passengerTempF)) {
+            return presses > 0 ? DONE : QUIET;
         }
         if (s.sync != 0) return unknown();
         if (s.driverOnly == 1) return QUIET;

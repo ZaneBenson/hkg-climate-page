@@ -78,6 +78,8 @@ public class PresetRunnerTest {
         float wokenTemp = 71f;
         int wokenFanRaw = 1;
         boolean ignoreFan;
+        /** A driver press on a synced car is not yet shown on the passenger's reading. */
+        boolean passengerLags;
         boolean wrongWay;
         /** Each fan press moves the fan the opposite way, wrapping from 2 to 9 and back. */
         boolean fanWrongWay;
@@ -176,7 +178,7 @@ public class PresetRunnerTest {
                 case 50:
                     if (dropped()) break;
                     driverTemp += ((value == 1) != wrongWay) ? step : -step;
-                    if (sync == 1) passengerTemp = driverTemp;
+                    if (sync == 1 && !passengerLags) passengerTemp = driverTemp;
                     break;
                 case 49:
                     if (dropped()) break;
@@ -762,6 +764,20 @@ public class PresetRunnerTest {
         assertEquals(1, car.sync);
         assertEquals(70f, car.passengerTemp, 0f);
         assertEquals("Cold: 70 °F (2 steps); not done: passenger 74 °F (sync on)",
+                runner.lastResult());
+    }
+
+    @Test
+    public void aSyncedPassengerReadingTheTargetWhileTheDriverMovesAwayIsStillNamed() {
+        car.sync = 1;
+        car.driverTemp = 74f;
+        car.passengerTemp = 74f;
+        car.passengerLags = true; // the passenger still reads 74 when its item is decided
+        run(temps(70, 74, L));
+        assertEquals(Collections.nCopies(4, "climate 50 2"), car.calls);
+        assertEquals(70f, car.driverTemp, 0f);
+        assertEquals(74f, car.passengerTemp, 0f);
+        assertEquals("Cold: 70 °F (4 steps); not done: passenger 74 °F (sync on)",
                 runner.lastResult());
     }
 
