@@ -18,20 +18,23 @@ import hkgclimate.link.PageLink;
 /**
  * The climate page's view, built in code (the panel app has no resources of ours): a top line
  * with a Settings button, two seat buttons with three level bars each (the button's border shows
- * what the next tap does: orange heats, blue cools, grey is unavailable) and four greyed preset
- * slots. The slot is 640 x 720 px at density 240; sizes are given in dp and sp and converted with
- * the context's display metrics. All methods are for the main thread.
+ * what the next tap does: orange heats, blue cools, grey is unavailable) and four preset slots (a
+ * slot with an enabled preset shows its name and applies it on a tap; the others are greyed).
+ * The slot is 640 x 720 px at density 240; sizes are given in dp and sp and converted with the
+ * context's display metrics. All methods are for the main thread.
  */
 final class PageView extends FrameLayout {
     private static final String TAG = ClimatePage.TAG;
 
     interface Listener {
         void onSeatTap(int seat);
+        void onPresetTap(int index);
         void onSettings();
     }
 
     private static final int SEATS = 2;
     private static final int BARS = 3;
+    private static final int PRESETS = 4;
 
     private static final int COLOR_HEAT = Color.parseColor("#FF8A00");
     private static final int COLOR_COOL = Color.parseColor("#2D9CDB");
@@ -41,6 +44,7 @@ final class PageView extends FrameLayout {
 
     private static final String WAITING = "Waiting for the climate app";
     private static final String SEPARATOR = " · ";
+    private static final String EMPTY_PRESET = "Preset";
 
     private final float density;
     private final float scaledDensity;
@@ -51,13 +55,15 @@ final class PageView extends FrameLayout {
     private final TextView[] seatNames = new TextView[SEATS];
     private final TextView[] seatStates = new TextView[SEATS];
     private final View[][] bars = new View[SEATS][BARS];
-    private final TextView[] presets = new TextView[4];
+    private final TextView[] presets = new TextView[PRESETS];
 
     private final String[] seatTextNow = new String[SEATS];
     private final int[] levelNow = new int[SEATS];
     private final int[] kindNow = new int[SEATS];
     private final int[] tapKindNow = new int[SEATS];
     private final boolean[] enabledNow = new boolean[SEATS];
+    private final String[] presetNameNow = new String[PRESETS];
+    private final boolean[] presetEnabledNow = new boolean[PRESETS];
 
     private boolean night;
     private Listener listener;
@@ -175,18 +181,33 @@ final class PageView extends FrameLayout {
         seatRowParams.bottomMargin = dp(12);
         column.addView(seatRow, seatRowParams);
 
-        // four greyed preset slots, 2 x 2
+        // four preset slots, 2 x 2; greyed and unclickable until the app sends an enabled preset
         for (int row = 0; row < 2; row++) {
             LinearLayout r = new LinearLayout(context);
             r.setOrientation(LinearLayout.HORIZONTAL);
             for (int col = 0; col < 2; col++) {
                 TextView p = new TextView(context);
                 textSize(p, 18);
-                p.setText("Preset");
+                p.setText(EMPTY_PRESET);
                 p.setGravity(Gravity.CENTER);
+                p.setSingleLine(true);
                 p.setAlpha(0.35f);
                 p.setClickable(false);
-                presets[row * 2 + col] = p;
+                final int slot = row * 2 + col;
+                p.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        try {
+                            // the state may have changed since the slot was drawn
+                            if (!presetLive(slot)) return;
+                            Listener l = listener;
+                            if (l != null) l.onPresetTap(slot);
+                        } catch (Throwable t) {
+                            Log.e(TAG, "preset tap failed", t);
+                        }
+                    }
+                });
+                presets[slot] = p;
                 LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(dp(180), dp(50));
                 if (col > 0) pp.leftMargin = dp(24);
                 r.addView(p, pp);
@@ -209,9 +230,10 @@ final class PageView extends FrameLayout {
         this.night = night;
         applyTheme();
         refreshSeats();
+        refreshPresets();
     }
 
-    /** Show a message in the top line; seats are blank and disabled until the next state. */
+    /** Show a message in the top line; seats and presets are blank and disabled until the next state. */
     void showNotice(String text) {
         top.setText(text);
         for (int i = 0; i < SEATS; i++) {
@@ -221,10 +243,15 @@ final class PageView extends FrameLayout {
             tapKindNow[i] = 0;
             enabledNow[i] = false;
         }
+        for (int i = 0; i < PRESETS; i++) {
+            presetNameNow[i] = null;
+            presetEnabledNow[i] = false;
+        }
         refreshSeats();
+        refreshPresets();
     }
 
-    /** Draw a state Bundle from the app (PageLink keys). Missing parts show as off and disabled. */
+    /** Draw a state Bundle from the app (PageLink keys). Missing parts show as off, disabled or empty. */
     void render(Bundle state) {
         if (state == null) return;
         String t = state.getString(PageLink.K_TOP);
@@ -241,7 +268,30 @@ final class PageView extends FrameLayout {
             tapKindNow[i] = tapKind != null && i < tapKind.length ? tapKind[i] : 0;
             enabledNow[i] = enabled != null && i < enabled.length && enabled[i];
         }
+        String[] presetNames = state.getStringArray(PageLink.K_PRESET_NAMES);
+        boolean[] presetEnabled = state.getBooleanArray(PageLink.K_PRESET_ENABLED);
+        for (int i = 0; i < PRESETS; i++) {
+            presetNameNow[i] = presetNames != null && i < presetNames.length ? presetNames[i] : null;
+            presetEnabledNow[i] = presetEnabled != null && i < presetEnabled.length && presetEnabled[i];
+        }
         refreshSeats();
+        refreshPresets();
+    }
+
+    /** Each slot: an enabled preset shows its name at full strength and takes taps; the rest are greyed. */
+    private void refreshPresets() {
+        for (int i = 0; i < PRESETS; i++) {
+            String name = presetNameNow[i];
+            boolean live = presetLive(i);
+            presets[i].setText(name == null ? EMPTY_PRESET : name);
+            presets[i].setClickable(live);
+            presets[i].setAlpha(live ? 1f : 0.35f);
+        }
+    }
+
+    /** A slot takes taps only with an enabled flag and a name (a slot with no name is empty). */
+    private boolean presetLive(int slot) {
+        return presetEnabledNow[slot] && presetNameNow[slot] != null;
     }
 
     private void refreshSeats() {

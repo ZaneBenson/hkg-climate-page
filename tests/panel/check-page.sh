@@ -178,8 +178,8 @@ check "the page declares no field named viewId" sh -c "! grep -q 'viewId' $TMP/d
 check "code reaches k.mContext" has_ref "$TMP/dexcode.txt" '\.mContext'
 check "code reads the uiMode of the configuration" has_ref "$TMP/dexcode.txt" 'Landroid/content/res/Configuration;\.uiMode'
 check "code binds the service" has_ref "$TMP/dexcode.txt" 'Landroid/content/Context;\.bindService'
-check "every transact (subscribe, unsubscribe, tap) passes FLAG_ONEWAY" \
-    test "$(oneway_report "$TMP/dexcode.txt")" = "2 0"
+check "every transact (subscribe and unsubscribe, tap, preset) passes FLAG_ONEWAY" \
+    test "$(oneway_report "$TMP/dexcode.txt")" = "3 0"
 
 # ClimatePageFactory.create: the descriptor the smali hook calls
 awk '/Class descriptor/ { cls = $0 } /name *: *.create./ { if (cls ~ /ClimatePageFactory/) f = 1 }

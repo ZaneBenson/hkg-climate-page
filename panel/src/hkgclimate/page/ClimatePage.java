@@ -53,6 +53,7 @@ public final class ClimatePage extends k {
             });
             v.setListener(new PageView.Listener() {
                 @Override public void onSeatTap(int seat) { l.tap(seat); }
+                @Override public void onPresetTap(int index) { l.preset(index); }
                 @Override public void onSettings() { openSettings(); }
             });
             link = l;

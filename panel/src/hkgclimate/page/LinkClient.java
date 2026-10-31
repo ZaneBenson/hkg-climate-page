@@ -16,7 +16,7 @@ import java.util.Random;
 
 /**
  * The page's side of the PageLink protocol: binds our app's service, subscribes with a callback
- * Binder, and sends seat taps. State is touched on the main thread only; start() and stop() may
+ * Binder, and sends seat and preset taps. State is touched on the main thread only; start() and stop() may
  * be called from any thread and hop to the main thread. Nothing here blocks: every call to the
  * service is oneway.
  */
@@ -43,6 +43,7 @@ final class LinkClient {
     private boolean started;
     private boolean bound;
     private IBinder service;
+    // request ids for seat taps and preset taps alike, so they stay unique across both
     private long nextTapId = new Random().nextLong();
     // our app's uid, looked up on the main thread before subscribing; -1 if unknown (then every
     // callback is refused). Read on binder threads.
@@ -168,6 +169,26 @@ final class LinkClient {
             }
         } catch (Throwable t) {
             Log.e(TAG, "tap failed", t);
+        }
+    }
+
+    /** Send a tap for preset slot 0 to 3, oneway, with a new request id. */
+    void preset(int index) {
+        try {
+            IBinder s = service;
+            if (s == null) return;
+            long id = nextTapId++;
+            Parcel p = Parcel.obtain();
+            try {
+                p.writeInterfaceToken(PageLink.DESCRIPTOR);
+                p.writeInt(index);
+                p.writeLong(id);
+                s.transact(PageLink.TX_PRESET, p, null, IBinder.FLAG_ONEWAY);
+            } finally {
+                p.recycle();
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "preset tap failed", t);
         }
     }
 
