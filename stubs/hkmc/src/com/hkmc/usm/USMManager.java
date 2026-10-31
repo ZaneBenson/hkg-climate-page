@@ -11,4 +11,12 @@ public class USMManager {
     public void setFrontSeatHeatDrvStep(int step) { throw new RuntimeException("stub"); }
 
     public void setFrontSeatHeatAstStep(int step) { throw new RuntimeException("stub"); }
+
+    public void setSWRC_SteeringwheelWarmerSet(int value) { throw new RuntimeException("stub"); }
+
+    public int getSWRC_SteeringwheelHeatIndStep2() { throw new RuntimeException("stub"); }
+
+    public void setClimateControlECOMode(int value) { throw new RuntimeException("stub"); }
+
+    public int getClimateControlECOMode() { throw new RuntimeException("stub"); }
 }

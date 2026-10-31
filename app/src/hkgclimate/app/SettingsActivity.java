@@ -55,7 +55,7 @@ public class SettingsActivity extends Activity {
     private Button minus;
     private Button plus;
     private TextView statusText;
-    private TextView seatStatus;
+    private TextView commandStatus;
     private LinearLayout presetBox;
 
     // ours alone: the service calls it with every state; main-thread work is posted
@@ -212,9 +212,9 @@ public class SettingsActivity extends Activity {
         statusText.setPadding(0, dp(16), 0, 0);
         root.addView(statusText);
 
-        seatStatus = text("", 18);
-        seatStatus.setPadding(0, dp(24), 0, 0);
-        root.addView(seatStatus);
+        commandStatus = text("", 18);
+        commandStatus.setPadding(0, dp(24), 0, 0);
+        root.addView(commandStatus);
 
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
@@ -250,7 +250,7 @@ public class SettingsActivity extends Activity {
             plus.setEnabled(SwitchTemp.fromDisplay(shown + 1, rawUnit) > stored);
             statusText.setText(statusLines());
             String last = debug == null ? null : debug.getString(PageStates.D_LAST_SEND);
-            seatStatus.setText("Seat command: " + (last == null ? "nothing sent yet" : last));
+            commandStatus.setText("Last command: " + (last == null ? "nothing sent yet" : last));
         } catch (Throwable t) {
             Log.w(TAG, "settings refresh failed", t);
         }

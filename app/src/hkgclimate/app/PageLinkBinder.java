@@ -27,6 +27,15 @@ final class PageLinkBinder extends Binder {
         Bundle debug();
     }
 
+    /** The bookkeeping after a tap that sent at least one command (the last-command line, the watch). */
+    interface AfterSend {
+        /**
+         * presetIndex: the tapped preset slot, or -1 for a seat tap. sent: what the core counted
+         * (for a preset, its seat sends plus 1 when the preset runner started).
+         */
+        void afterSend(int presetIndex, int sent);
+    }
+
     private static final String TAG = CarLink.TAG;
 
     private static final class Subscriber implements DeathRecipient {
@@ -48,7 +57,7 @@ final class PageLinkBinder extends Binder {
 
     private final ClimateCore core;
     private final DebugSource debugSource;
-    private final Runnable afterSend;
+    private final AfterSend afterSend;
     private final Handler handler = new Handler(Looper.getMainLooper());
     // main thread only
     private final ArrayList<Subscriber> subscribers = new ArrayList<Subscriber>();
@@ -57,10 +66,10 @@ final class PageLinkBinder extends Binder {
     private final Set<Integer> refusedUids = new HashSet<Integer>();
 
     /**
-     * afterSend runs on the main thread once for each tap that sent at least one command (the last-send
-     * line and the watch check); it may be null.
+     * afterSend runs on the main thread once for each tap that sent at least one command (the
+     * last-command line and the watch check); it may be null.
      */
-    PageLinkBinder(ClimateCore core, DebugSource debugSource, Runnable afterSend) {
+    PageLinkBinder(ClimateCore core, DebugSource debugSource, AfterSend afterSend) {
         this.core = core;
         this.debugSource = debugSource;
         this.afterSend = afterSend;
@@ -157,7 +166,7 @@ final class PageLinkBinder extends Binder {
 
     private void tap(Seat seat, long id) {
         try {
-            if (core.onTap(seat, id)) sent();
+            if (core.onTap(seat, id)) sent(-1, 1);
         } catch (Throwable t) {
             Log.w(TAG, "tap failed", t);
         }
@@ -166,16 +175,17 @@ final class PageLinkBinder extends Binder {
     /** Main thread: one preset tap. The core ignores a bad slot or an id it has seen. */
     private void presetTap(int index, long id) {
         try {
-            if (core.onPresetTap(index, id) > 0) sent();
+            int sent = core.onPresetTap(index, id);
+            if (sent > 0) sent(index, sent);
         } catch (Throwable t) {
             Log.w(TAG, "preset tap failed", t);
         }
     }
 
     /** Main thread: a tap sent a command; one round of bookkeeping however many it sent. */
-    private void sent() {
-        Runnable r = afterSend;
-        if (r != null) r.run();
+    private void sent(int presetIndex, int count) {
+        AfterSend r = afterSend;
+        if (r != null) r.afterSend(presetIndex, count);
     }
 
     private void subscribe(IBinder cb) {

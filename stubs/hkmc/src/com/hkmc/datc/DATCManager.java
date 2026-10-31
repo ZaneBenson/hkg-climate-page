@@ -13,4 +13,10 @@ public final class DATCManager {
     public void removeTemperatureListener(DATCTemperatureListener listener) { throw new RuntimeException("stub"); }
 
     public int getTemperatureUnit() { throw new RuntimeException("stub"); }
+
+    public void setFrontClimateControl(int flag, int value) { throw new RuntimeException("stub"); }
+
+    public float getVRClimateStatus(int flag) { throw new RuntimeException("stub"); }
+
+    public int getDriverOnlyValue() { throw new RuntimeException("stub"); }
 }

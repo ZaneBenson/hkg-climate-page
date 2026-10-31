@@ -1,8 +1,9 @@
 #!/bin/sh
 # Host check of the app build: builds the signed APK and asserts its manifest facts, its v1
 # signature, a few calls its code must make, that no stock stub class is packaged, and that the
-# only send-path references are the approved seat calls, inside UsmSeatCalls, which only
-# CheckedSeatSender.send calls.
+# only send-path references are the approved calls: the seat, steering-wheel and eco setters inside
+# UsmSeatCalls and setFrontClimateControl inside DatcClimateCalls, reached only through
+# CheckedSeatSender.send (seats) or CheckedCabinSender and StockCabinCalls (presets).
 # usage: sh tests/app/check-app.sh   (prints one line per check; exit 1 if any check fails)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 eval "$("$ROOT/tools/toolchain.sh" env)"
@@ -46,7 +47,8 @@ method_lacks_ref() { ! method_has_ref "$@"; }
 # usm_refs_ok <dexdump -d output>: every Lcom/hkmc/usm/ reference is inside
 # hkgclimate.app.UsmSeatCalls (in the code of its methods, or its own declarations such as the
 # cached manager field), names no stock class but USMManager, and every USMManager member it names
-# is one of the three approved ones. Prints the offending lines; status 1 when there are any.
+# is one of the approved ones: the constructor, the two seat setters, the steering-wheel and eco
+# setters and their two getters. Prints the offending lines; status 1 when there are any.
 usm_refs_ok() {
     awk -v cls_ok="'Lhkgclimate/app/UsmSeatCalls;'" -v meth_ok="hkgclimate.app.UsmSeatCalls." '
         /Class descriptor/ { incls = index($0, cls_ok) > 0; meth = ""; next }
@@ -67,7 +69,11 @@ usm_refs_ok() {
                     member = rest; sub(/[ ,].*/, "", member)
                     if (member != ".<init>:(Landroid/content/Context;)V" \
                         && member != ".setFrontSeatHeatDrvStep:(I)V" \
-                        && member != ".setFrontSeatHeatAstStep:(I)V") bad = 1
+                        && member != ".setFrontSeatHeatAstStep:(I)V" \
+                        && member != ".setSWRC_SteeringwheelWarmerSet:(I)V" \
+                        && member != ".getSWRC_SteeringwheelHeatIndStep2:()I" \
+                        && member != ".setClimateControlECOMode:(I)V" \
+                        && member != ".getClimateControlECOMode:()I") bad = 1
                 }
             }
             if (bad) { print; n++ }
@@ -104,6 +110,57 @@ seat_calls_only_in() {
         }
         END { exit !(n > 0 && bad == 0) }' "$1"
 }
+# refs_only_in <dexdump -d output> <method prefix> <ref>...: the code refers to at least one of
+# the refs, and every reference is in the code of a method whose name starts with the prefix (a
+# whole class "pkg.Class." or one method "pkg.Class.method:"). Prints the offending lines.
+refs_only_in() {
+    _f=$1; _want=$2; shift 2
+    awk -v want="$_want" -v refs="$*" '
+        BEGIN { nr = split(refs, r, " ") }
+        /Class descriptor/ { meth = "" }
+        /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m }
+        {
+            hit = 0
+            for (i = 1; i <= nr; i++) if (index($0, r[i])) hit = 1
+            if (hit) { n++; if (index(meth, want) != 1) { print; bad++ } }
+        }
+        END { exit !(n > 0 && bad == 0) }' "$_f"
+}
+# code_lacks_ref <dexdump -d output> <method prefix> <ref>: the listing has code in methods whose
+# name starts with the prefix, and none of that code refers to <ref>. Prints the offending lines.
+code_lacks_ref() {
+    awk -v want="$2" -v ref="$3" '
+        /Class descriptor/ { meth = "" }
+        /\|\[[0-9a-f]+\] / { m = $0; sub(/.*\|\[[0-9a-f]+\] /, "", m); meth = m; if (index(meth, want) == 1) seen++; next }
+        index(meth, want) == 1 && index($0, ref) { print; bad++ }
+        END { exit !(seen > 0 && bad == 0) }' "$1"
+}
+# datc_refs_ok <dexdump -d output>: every Lcom/hkmc/datc/DATCManager; member the code names is one
+# of addTemperatureListener, removeTemperatureListener, getTemperatureUnit, getVRClimateStatus,
+# getDriverOnlyValue and setFrontClimateControl (no constructor, no field, nothing else). Prints
+# the offending lines; status 1 when there are any.
+datc_refs_ok() {
+    awk '
+        !index($0, "Lcom/hkmc/datc/DATCManager;.") { next }
+        {
+            rest = $0; bad = 0
+            while ((i = index(rest, "Lcom/hkmc/datc/DATCManager;.")) > 0) {
+                rest = substr(rest, i + length("Lcom/hkmc/datc/DATCManager;."))
+                member = rest; sub(/:.*/, "", member)
+                if (member != "addTemperatureListener" && member != "removeTemperatureListener" \
+                    && member != "getTemperatureUnit" && member != "getVRClimateStatus" \
+                    && member != "getDriverOnlyValue" && member != "setFrontClimateControl") bad = 1
+            }
+            if (bad) { print; n++ }
+        }
+        END { exit n > 0 }' "$1"
+}
+# the preset fences (refs_only_in): the cabin calls, reached only through CheckedCabinSender
+CABIN_REFS='Lhkgclimate/core/CabinCalls;.climate: Lhkgclimate/core/CabinCalls;.wheel: Lhkgclimate/core/CabinCalls;.eco: Lhkgclimate/app/StockCabinCalls;.climate: Lhkgclimate/app/StockCabinCalls;.wheel: Lhkgclimate/app/StockCabinCalls;.eco:'
+CABIN_FROM='hkgclimate.core.CheckedCabinSender.'
+# the two stock-call classes' cabin setters, reached only through StockCabinCalls
+STOCK_REFS='Lhkgclimate/app/DatcClimateCalls;.send: Lhkgclimate/app/UsmSeatCalls;.wheel: Lhkgclimate/app/UsmSeatCalls;.eco:'
+STOCK_FROM='hkgclimate.app.StockCabinCalls.'
 # dex_has_string <classes.dex> <string>: the dex string table holds exactly this string
 dex_has_string() {
     "$PY" -I - "$1" "$2" <<'PY'
@@ -154,7 +211,7 @@ PY
 # USMManager with one extra member, and a com.hkmc.usm.Seat) live only in $TMP; they are never in
 # the repo or the APK.
 ST=$TMP/st
-mkdir -p "$ST/s/com/hkmc/usm" "$ST/so"
+mkdir -p "$ST/s/com/hkmc/usm" "$ST/s/com/hkmc/datc" "$ST/so"
 cat > "$ST/s/com/hkmc/usm/Seat.java" <<'JAVA'
 package com.hkmc.usm;
 public class Seat { public void send(int v) { } }
@@ -165,11 +222,28 @@ public class USMManager {
     public USMManager(android.content.Context c) { }
     public void setFrontSeatHeatDrvStep(int v) { }
     public void setFrontSeatHeatAstStep(int v) { }
+    public void setSWRC_SteeringwheelWarmerSet(int v) { }
+    public int getSWRC_SteeringwheelHeatIndStep2() { return 0; }
+    public void setClimateControlECOMode(int v) { }
+    public int getClimateControlECOMode() { return 0; }
     public void setOther(int v) { }
 }
 JAVA
+# a scratch DATCManager with the allowed members, a constructor and two members we never name
+cat > "$ST/s/com/hkmc/datc/DATCManager.java" <<'JAVA'
+package com.hkmc.datc;
+public class DATCManager {
+    public DATCManager(android.content.Context c) { }
+    public void setFrontClimateControl(int flag, int value) { }
+    public float getVRClimateStatus(int flag) { return 0; }
+    public int getDriverOnlyValue() { return 0; }
+    public int getTemperatureUnit() { return 0; }
+    public void setVRClimateStatus(int flag, int value) { }
+    public int getClimateInfo(int i) { return 0; }
+}
+JAVA
 javac --release 8 -cp "$ANDROID_JAR" -d "$ST/so" "$ST/s/com/hkmc/usm/Seat.java" \
-    "$ST/s/com/hkmc/usm/USMManager.java" > /dev/null 2>&1
+    "$ST/s/com/hkmc/usm/USMManager.java" "$ST/s/com/hkmc/datc/DATCManager.java" > /dev/null 2>&1
 # scratch_dex <name> <file base name> <java source>: compiles one source against the scratch
 # stubs, dexes it and writes its dexdump -d listing to $ST/<name>/code.txt (empty on any failure)
 scratch_dex() {
@@ -203,6 +277,33 @@ scratch_dex sendok UsmCalls "$SEND_IFACE class CheckedSeatSender { UsmCalls c; v
 scratch_dex sendother UsmCalls "$SEND_IFACE class CheckedSeatSender { UsmCalls c; void send(int v) throws Exception { c.driver(v); } } class Other { void go(UsmCalls c) throws Exception { c.driver(3); } }"
 scratch_dex sendset UsmCalls "$SEND_IFACE class CheckedSeatSender { UsmCalls c; void send(int v) throws Exception { c.driver(v); } void set(int v) throws Exception { c.passenger(v); } }"
 scratch_dex sendapp Other 'package hkgclimate.app; class UsmSeatCalls { void driver(int v) { } void passenger(int v) { } } public class Other { void go(UsmSeatCalls c) { c.passenger(3); } }'
+# the preset fences: DATC members, the DATC and USM cabin setters, and the cabin call chain
+scratch_dex usmcabin UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { com.hkmc.usm.USMManager m; void wheel(int v) { m.setSWRC_SteeringwheelWarmerSet(v); } void eco(int v) { m.setClimateControlECOMode(v); } int read() { return m.getSWRC_SteeringwheelHeatIndStep2() + m.getClimateControlECOMode(); } }'
+scratch_dex usmwheel UsmSeatCalls 'package hkgclimate.app; class UsmSeatCalls { com.hkmc.usm.USMManager m; void wheel(int v) { m.setSWRC_SteeringwheelWarmerSet(v); } void eco(int v) { m.setSWRC_SteeringwheelWarmerSet(0); } }'
+scratch_dex datcok DatcClimateCalls 'package hkgclimate.app; class DatcClimateCalls { com.hkmc.datc.DATCManager m; void send(int f, int v) { m.setFrontClimateControl(f, v); } float read() { return m.getVRClimateStatus(2) + m.getDriverOnlyValue() + m.getTemperatureUnit(); } }'
+scratch_dex datcvr Other 'package hkgclimate.app; public class Other { void go(com.hkmc.datc.DATCManager m) { m.setVRClimateStatus(9, 1); } }'
+scratch_dex datcout Other 'package hkgclimate.app; class DatcClimateCalls { void send(com.hkmc.datc.DATCManager m) { m.setFrontClimateControl(9, 1); } } public class Other { void go(com.hkmc.datc.DATCManager m) { m.setFrontClimateControl(9, 1); } }'
+scratch_dex datcextra DatcClimateCalls 'package hkgclimate.app; class DatcClimateCalls { int send(com.hkmc.datc.DATCManager m) { return m.getClimateInfo(24); } }'
+scratch_dex datcnew DatcClimateCalls 'package hkgclimate.app; class DatcClimateCalls { void send(android.content.Context c, int f, int v) { new com.hkmc.datc.DATCManager(c).setFrontClimateControl(f, v); } }'
+CABIN_IFACE='package hkgclimate.core; public interface CabinCalls { void climate(int f, int v) throws Exception; void wheel(int v) throws Exception; void eco(int v) throws Exception; }'
+scratch_dex cabinok CabinCalls "$CABIN_IFACE class CheckedCabinSender { CabinCalls c; void climate(int f, int v) throws Exception { c.climate(f, v); } void eco(int v) throws Exception { c.eco(v); } private void release() throws Exception { c.wheel(0); } }"
+scratch_dex cabinout CabinCalls "$CABIN_IFACE class CheckedCabinSender { CabinCalls c; void eco(int v) throws Exception { c.eco(v); } } class Other { void go(CabinCalls c) throws Exception { c.wheel(1); } }"
+scratch_dex cabinstock Other 'package hkgclimate.app; class StockCabinCalls { public void climate(int f, int v) { } } public class Other { void go(StockCabinCalls s) { s.climate(51, 1); } }'
+STOCK_CLASSES='package hkgclimate.app; class DatcClimateCalls { void send(int f, int v) { } } class UsmSeatCalls { void wheel(int v) { } void eco(int v) { } } class StockCabinCalls { DatcClimateCalls d; UsmSeatCalls u; void climate(int f, int v) { d.send(f, v); } void wheel(int v) { u.wheel(v); } void eco(int v) { u.eco(v); } }'
+scratch_dex stockok StockCabinCalls "$STOCK_CLASSES"
+scratch_dex stockwheel StockCabinCalls "$STOCK_CLASSES class Other { void go(UsmSeatCalls u) { u.wheel(1); } }"
+scratch_dex stocksend StockCabinCalls "$STOCK_CLASSES class Other { void go(DatcClimateCalls d) { d.send(8, 1); } }"
+# only_flags / only_passes <listing> <grep ref> <method prefix> <ref>...: the listing has <grep ref>
+# (so the scratch build worked) and refs_only_in fails / passes on it
+only_flags() { _l=$1; _g=$2; shift 2; grep -q "$_g" "$_l" && ! refs_only_in "$_l" "$@"; }
+only_passes() { _l=$1; _g=$2; shift 2; grep -q "$_g" "$_l" && refs_only_in "$_l" "$@"; }
+# datc_flags / datc_passes <listing> <ref>: the listing has <ref> and datc_refs_ok fails / passes
+datc_flags() { grep -q "$2" "$1" && ! datc_refs_ok "$1"; }
+datc_passes() { grep -q "$2" "$1" && datc_refs_ok "$1"; }
+# new_flags <listing> <method prefix>: DATCManager is constructed there and code_lacks_ref fails
+new_flags() { grep -q 'DATCManager;\.<init>' "$1" && ! code_lacks_ref "$1" "$2" 'Lcom/hkmc/datc/DATCManager;.<init>'; }
+# vr_flags <scratch dir>: the scratch code calls setVRClimateStatus and the dex string check fails
+vr_flags() { grep -q 'DATCManager;\.setVRClimateStatus' "$1/code.txt" && ! dex_lacks_string "$1/classes.dex" setVRClimateStatus; }
 # usm_flags / usm_passes <listing> <ref>: the listing has <ref> (so the scratch build worked) and
 # usm_refs_ok fails / passes on it
 usm_flags() { grep -q "$2" "$1" && ! usm_refs_ok "$1"; }
@@ -287,9 +388,56 @@ check "self-test: the seat-call check flags another class calling UsmSeatCalls.p
 check "self-test: the seat-call check fails a listing with no seat call" \
     send_none_fails "$ST/caller/code.txt"
 
+check "self-test: usm check passes UsmSeatCalls making the steering-wheel and eco calls" \
+    usm_passes "$ST/usmcabin/code.txt" 'USMManager;\.getClimateControlECOMode'
+check "self-test: the wheel-setter check flags setSWRC_SteeringwheelWarmerSet outside UsmSeatCalls.wheel" \
+    only_flags "$ST/usmwheel/code.txt" 'setSWRC_SteeringwheelWarmerSet' 'hkgclimate.app.UsmSeatCalls.wheel:' 'Lcom/hkmc/usm/USMManager;.setSWRC_SteeringwheelWarmerSet:'
+check "self-test: the wheel-setter check passes it inside UsmSeatCalls.wheel only" \
+    only_passes "$ST/usmcabin/code.txt" 'setSWRC_SteeringwheelWarmerSet' 'hkgclimate.app.UsmSeatCalls.wheel:' 'Lcom/hkmc/usm/USMManager;.setSWRC_SteeringwheelWarmerSet:'
+check "self-test: the DATC member check passes DatcClimateCalls using allowed members" \
+    datc_passes "$ST/datcok/code.txt" 'DATCManager;\.getDriverOnlyValue'
+check "self-test: the DATC member check flags a setVRClimateStatus call" \
+    datc_flags "$ST/datcvr/code.txt" 'DATCManager;\.setVRClimateStatus'
+check "self-test: the dex string check flags a setVRClimateStatus call" vr_flags "$ST/datcvr"
+check "self-test: the DATC member check flags an extra DATCManager member" \
+    datc_flags "$ST/datcextra/code.txt" 'DATCManager;\.getClimateInfo'
+check "self-test: the DATC member check flags a DATCManager constructor" \
+    datc_flags "$ST/datcnew/code.txt" 'DATCManager;\.<init>'
+check "self-test: the climate-setter check passes setFrontClimateControl in DatcClimateCalls.send" \
+    only_passes "$ST/datcok/code.txt" 'setFrontClimateControl' 'hkgclimate.app.DatcClimateCalls.send:' 'Lcom/hkmc/datc/DATCManager;.setFrontClimateControl:'
+check "self-test: the climate-setter check flags setFrontClimateControl outside DatcClimateCalls" \
+    only_flags "$ST/datcout/code.txt" 'Other.go' 'hkgclimate.app.DatcClimateCalls.send:' 'Lcom/hkmc/datc/DATCManager;.setFrontClimateControl:'
+check "self-test: the no-constructor check passes DatcClimateCalls without one" \
+    code_lacks_ref "$ST/datcok/code.txt" 'hkgclimate.app.DatcClimateCalls.' 'Lcom/hkmc/datc/DATCManager;.<init>'
+check "self-test: the no-constructor check flags DatcClimateCalls making a DATCManager" \
+    new_flags "$ST/datcnew/code.txt" 'hkgclimate.app.DatcClimateCalls.'
+check "self-test: the no-constructor check fails a listing without the class" \
+    fails code_lacks_ref "$ST/caller/code.txt" 'hkgclimate.app.DatcClimateCalls.' 'Lcom/hkmc/datc/DATCManager;.<init>'
+# shellcheck disable=SC2086 # the ref lists are one ref per word
+check "self-test: the cabin-call check passes calls made only in CheckedCabinSender" \
+    only_passes "$ST/cabinok/code.txt" 'CabinCalls;\.wheel:' "$CABIN_FROM" $CABIN_REFS
+# shellcheck disable=SC2086
+check "self-test: the cabin-call check flags another class calling CabinCalls.wheel" \
+    only_flags "$ST/cabinout/code.txt" 'hkgclimate.core.Other.go:' "$CABIN_FROM" $CABIN_REFS
+# shellcheck disable=SC2086
+check "self-test: the cabin-call check flags a direct StockCabinCalls.climate call" \
+    only_flags "$ST/cabinstock/code.txt" 'StockCabinCalls;\.climate:' "$CABIN_FROM" $CABIN_REFS
+# shellcheck disable=SC2086
+check "self-test: the cabin-call check fails a listing with no cabin call" \
+    fails refs_only_in "$ST/caller/code.txt" "$CABIN_FROM" $CABIN_REFS
+# shellcheck disable=SC2086
+check "self-test: the stock-setter check passes calls made only in StockCabinCalls" \
+    only_passes "$ST/stockok/code.txt" 'UsmSeatCalls;\.eco:' "$STOCK_FROM" $STOCK_REFS
+# shellcheck disable=SC2086
+check "self-test: the stock-setter check flags another class calling UsmSeatCalls.wheel" \
+    only_flags "$ST/stockwheel/code.txt" 'hkgclimate.app.Other.go:' "$STOCK_FROM" $STOCK_REFS
+# shellcheck disable=SC2086
+check "self-test: the stock-setter check flags another class calling DatcClimateCalls.send" \
+    only_flags "$ST/stocksend/code.txt" 'hkgclimate.app.Other.go:' "$STOCK_FROM" $STOCK_REFS
+
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
-check "versionName is 1.0.0" grep -q "versionName='1.0.0'" "$TMP/badging"
-check "versionCode is 4" grep -q "versionCode='4'" "$TMP/badging"
+check "versionName is 1.1.0" grep -q "versionName='1.1.0'" "$TMP/badging"
+check "versionCode is 5" grep -q "versionCode='5'" "$TMP/badging"
 # the approval flow is gone: no commander class, no dialog, no preference key
 check "dex has no TestModeCommander class" sh -c "! grep -q 'Lhkgclimate/app/TestModeCommander;' $TMP/dex.txt"
 # the one dialog is the settings screen's "Delete preset?" confirm; nothing else shows one
@@ -400,6 +548,61 @@ check "the settings screen stores presets through PresetList" \
     has_ref "$TMP/dexcode.txt" 'Lhkgclimate/core/PresetList;\.moveUp'
 check "preset sends go through the core and CheckedSeatSender only (no new send path)" \
     method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'UsmSeatCalls'
+
+# presets (plan 6): the climate, steering-wheel and eco commands, each through its fenced class
+check "every DATCManager member the code names is one of the six allowed" datc_refs_ok "$TMP/dexcode.txt"
+check "setFrontClimateControl is called only from DatcClimateCalls.send" \
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.app.DatcClimateCalls.send:' 'Lcom/hkmc/datc/DATCManager;.setFrontClimateControl:'
+check "no setVRClimateStatus in the dex strings" dex_lacks_string "$TMP/classes.dex" setVRClimateStatus
+check "no setVRClimateStatus in the code" sh -c "! grep -q 'setVRClimateStatus' $TMP/dexcode.txt"
+check "DatcClimateCalls constructs no DATCManager" \
+    code_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.DatcClimateCalls.' 'Lcom/hkmc/datc/DATCManager;.<init>'
+check "DatcClimateCalls.send gets the manager from VehicleInfoManager.getService" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.DatcClimateCalls.send:' 'Lcom/hkmc/VehicleInfoManager;\.getService:'
+check "DatcClimateCalls.send reads the field VehicleInfoManager.DATC_SERVICE" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.DatcClimateCalls.send:' 'sget-object.*Lcom/hkmc/VehicleInfoManager;\.DATC_SERVICE'
+check "DatcClimateCalls catches no exception (CheckedCabinSender does)" \
+    no_typed_catch_in "$TMP/dexcode.txt" 'Lhkgclimate/app/DatcClimateCalls;'
+check "StockCabinCalls catches no exception (CheckedCabinSender does)" \
+    no_typed_catch_in "$TMP/dexcode.txt" 'Lhkgclimate/app/StockCabinCalls;'
+check "setSWRC_SteeringwheelWarmerSet is called only from UsmSeatCalls.wheel" \
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.wheel:' 'Lcom/hkmc/usm/USMManager;.setSWRC_SteeringwheelWarmerSet:'
+check "setClimateControlECOMode is called only from UsmSeatCalls.eco" \
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.eco:' 'Lcom/hkmc/usm/USMManager;.setClimateControlECOMode:'
+check "UsmSeatCalls.wheel can clear the cached manager" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.wheel:' 'iput-object.*UsmSeatCalls;\.usm:'
+check "UsmSeatCalls.eco can clear the cached manager" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.UsmSeatCalls.eco:' 'iput-object.*UsmSeatCalls;\.usm:'
+# shellcheck disable=SC2086
+check "CabinCalls.climate/wheel/eco are called only from CheckedCabinSender" \
+    refs_only_in "$TMP/dexcode.txt" "$CABIN_FROM" $CABIN_REFS
+# shellcheck disable=SC2086
+check "DatcClimateCalls.send and UsmSeatCalls.wheel/eco are called only from StockCabinCalls" \
+    refs_only_in "$TMP/dexcode.txt" "$STOCK_FROM" $STOCK_REFS
+check "a preset run starts only from ClimateCore.onPresetTap" \
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.core.ClimateCore.onPresetTap:' 'Lhkgclimate/core/PresetRunner;.start:'
+check "ClimateService builds the CheckedCabinSender" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/CheckedCabinSender;\.<init>'
+check "ClimateService builds the StockCabinCalls" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/app/StockCabinCalls;\.<init>'
+check "ClimateService builds the PresetRunner" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/PresetRunner;\.<init>'
+check "ClimateService builds the CabinStateReader" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/app/CabinStateReader;\.<init>'
+check "ClimateService passes the runner to the ClimateCore (the 3-argument constructor)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onCreate:' 'Lhkgclimate/core/ClimateCore;\.<init>:(Lhkgclimate/core/SeatCommander;ILhkgclimate/core/PresetRunner;)V'
+check "the runner's scheduler posts to the main looper's Handler (postDelayed, never inline)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService$MainScheduler.after:' 'Landroid/os/Handler;\.postDelayed:'
+check "the scheduler never runs the task itself" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService$MainScheduler.after:' 'Ljava/lang/Runnable;\.run:'
+check "CabinStateReader reads getVRClimateStatus" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.CabinStateReader.' 'Lcom/hkmc/datc/DATCManager;\.getVRClimateStatus:'
+check "CabinStateReader gets the DATC manager from VehicleInfoManager.getService" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.CabinStateReader.' 'Lcom/hkmc/VehicleInfoManager;\.getService:'
+check 'the settings screen calls its command line "Last command"' dex_has_string "$TMP/classes.dex" "Last command: "
+check "the ClimateService notes a preset whose seats were not ready" dex_has_string "$TMP/classes.dex" "seats not ready"
+check "preset taps reach no stock-call class directly" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'CabinCalls\|DatcClimateCalls\|CheckedCabinSender'
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
 echo "all checks passed"
