@@ -39,6 +39,8 @@ Then:
 `tools/build-capture.sh` writes `dist/hkg-climate-capture.zip`, a read-only tool that records the
 Android log on a USB stick while the stock climate controls are used (checklist:
 [docs/testing/2026-10-31-climate-capture.md](docs/testing/2026-10-31-climate-capture.md)).
+`tools/build-voicekit.sh` writes `dist/hkg-climate-voicekit.zip`, a read-only kit that copies the
+stock voice software (voice apps, engine libraries, US-English recognizer data) to a USB stick.
 
 The first `build-app.sh` run creates the signing key in `private/keys/`: back it up. The panel
 patch files are committed, so `tools/build-panel.sh` is not needed to package.

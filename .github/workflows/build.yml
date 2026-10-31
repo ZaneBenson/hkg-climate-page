@@ -69,6 +69,7 @@ jobs:
           (eval "$(tools/toolchain.sh env)" && python3 -m unittest -v tests/panel/test_patch_panel.py)
           sh tests/kit/run.sh
           sh tests/capture/run.sh
+          sh tests/voicekit/run.sh
 
       - name: Release signing key
         if: env.RELEASE == 'true'
@@ -95,6 +96,7 @@ jobs:
           tools/build-kit.sh
           tools/build-usb.sh
           tools/build-capture.sh
+          tools/build-voicekit.sh
           sh tests/usb/run.sh
 
       - name: Remove the signing key

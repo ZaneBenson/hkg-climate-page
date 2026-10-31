@@ -1,0 +1,8 @@
+# Stock voice files the hkg-climate voice kit copies, one absolute path per line.
+/system/app/HKMC_VoiceHandler.apk
+/system/app/HKMC_VoiceHandler.odex
+/system/app/HKMC_VoiceCommand.apk
+/system/app/HKMC_VoiceCommand.odex
+/system/app/HKMC_TAppVRM.apk
+/system/app/HKMC_TAppVRM.odex
+/system/framework/automotive.odex
