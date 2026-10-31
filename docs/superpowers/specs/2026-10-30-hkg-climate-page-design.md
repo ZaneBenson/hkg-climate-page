@@ -22,7 +22,8 @@ a cold or hot morning means many separate taps. The owner wants:
 
 - A new page in the split screen's page list, reached by swiping up/down like the stock
   Clock and Energy pages. Approved layout (mockup "B"):
-  - top line: outside temperature and what a seat tap will do ("Outside 48 °F · taps will heat");
+  - top line: the outside temperature ("Outside 48 °F"); *(owner's change, 2026-10-30: no
+    "taps will heat" text)*;
   - two big seat buttons, driver left and passenger right: seat icon, three level bars,
     orange = heating, blue = cooling, grey = off;
   - a row of preset buttons, each labelled with the preset's short name. *(My call: up to
@@ -31,9 +32,11 @@ a cold or hot morning means many separate taps. The owner wants:
   - a way to open the settings app from the page. *(My call: a small gear button.)*
 - **Version 1 layout (owner's choice, 2026-10-30, mockup "B"):** the seat buttons at their
   final size in the upper part; below them, four greyed-out preset slots (two rows of two)
-  until presets arrive in version 2; at the bottom, while seat commands are not yet
-  approved, a yellow strip "Test mode: taps are logged, not sent". Each seat button also
-  shows its state in words ("Driver · heat mid").
+  until presets arrive in version 2. Each seat button also shows its state in words
+  ("Driver · heat mid"). **Owner's changes, 2026-10-30:** the top line is only the outside
+  temperature; a seat button's border says what the next tap does (orange = heats, blue =
+  cools, grey = unavailable); no test strip and no approval switch (taps send the approved
+  command); seat buttons 180 dp square, preset slots 180 × 50 dp, 24 dp gaps.
 - **Seat button:** each tap steps off -> high -> mid -> low -> off (the stock order). Below
   the switch temperature it heats, at or above it cools. The mode is chosen when the seat
   goes from off to on; while on, taps keep that mode until it returns to off (no flapping).

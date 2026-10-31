@@ -31,7 +31,12 @@ read_manifest || refuse "HKG Climate Page was not installed: the package is dama
 check_stock || refuse "HKG Climate Page was not installed: this head unit's split-screen app is not the stock file. Nothing was changed."
 live_apk_known || refuse "HKG Climate Page was not installed: this head unit's split-screen app is not the stock file. Nothing was changed."
 clean_build
-check_space || refuse "HKG Climate Page was not installed: not enough free space. Nothing was changed."
+SPACE_SHORT=
+check_space || case "$SPACE_SHORT" in
+    system) refuse "HKG Climate Page: not enough space on /system. Restart the head unit, then plug the USB stick in again." ;;
+    data) refuse "HKG Climate Page: not enough space on /data. Nothing was changed." ;;
+    *) refuse "HKG Climate Page was not installed: could not check free space. Nothing was changed." ;;
+esac
 check_remount || refuse "HKG Climate Page was not installed: could not unlock the system partition. Restart the head unit and try again."
 build_apk || refuse "HKG Climate Page was not installed: the split-screen app could not be rebuilt. Nothing was changed."
 log "preinstall ok"

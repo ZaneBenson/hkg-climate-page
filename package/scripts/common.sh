@@ -149,7 +149,8 @@ free_kb() {
 
 # check_space: /data takes the rebuilt APK (and the stock backup, unless one is kept from an
 # earlier run: APK + odex, within 1 MB of the new APK's size) plus 32 MB; /system takes the new
-# APK beside the stock one before the rename, plus 16 MB
+# APK beside the stock one before the rename, plus 16 MB. SPACE_SHORT names the short
+# partition (data or system) so the caller can say which one.
 check_space() {
     local _apk _need_d _need_s _d _s
     _apk=$(( (WANT_SIZE + 1023) / 1024 ))
@@ -161,8 +162,8 @@ check_space() {
     _d=$(free_kb /data) || { log "FAIL: cannot read free space on /data"; return 1; }
     _s=$(free_kb /system) || { log "FAIL: cannot read free space on /system"; return 1; }
     log "free space: /data $_d KB (need $_need_d), /system $_s KB (need $_need_s)"
-    if [ "$_d" -lt "$_need_d" ]; then log "FAIL: not enough free space on /data"; return 1; fi
-    if [ "$_s" -lt "$_need_s" ]; then log "FAIL: not enough free space on /system"; return 1; fi
+    if [ "$_d" -lt "$_need_d" ]; then SPACE_SHORT=data; log "FAIL: not enough free space on /data"; return 1; fi
+    if [ "$_s" -lt "$_need_s" ]; then SPACE_SHORT=system; log "FAIL: not enough free space on /system"; return 1; fi
     return 0
 }
 

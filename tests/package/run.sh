@@ -387,6 +387,19 @@ new_case space
 export MOCK_DF_DATA=300.0M
 check "pre.sh exits 1"                    fails run_pre
 check "log says why"                      grep -q "FAIL: not enough free space on /data" "$X/pre.out"
+check "toast names /data"                 called "HKG Climate Page: not enough space on /data. Nothing was changed."
+check "/system untouched"                 sys_same "$X/before.md5"
+check "panel enabled"                     panel_enabled
+check "no build dir"                      no_build_dir
+end_case
+
+# ---- 6b not enough free space on /system (an update: the old patched APK still takes space
+# until a restart, so the owner is told to restart and plug the stick in again)
+new_case space-system
+export MOCK_DF_DATA=14.6G MOCK_DF_SYSTEM=107.0M
+check "pre.sh exits 1"                    fails run_pre
+check "log says why"                      grep -q "FAIL: not enough free space on /system" "$X/pre.out"
+check "toast says restart and re-plug"    called "HKG Climate Page: not enough space on /system. Restart the head unit, then plug the USB stick in again."
 check "/system untouched"                 sys_same "$X/before.md5"
 check "panel enabled"                     panel_enabled
 check "no build dir"                      no_build_dir
