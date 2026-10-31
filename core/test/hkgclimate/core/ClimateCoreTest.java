@@ -21,7 +21,7 @@ public class ClimateCoreTest {
     }
 
     private final Recorder rec = new Recorder();
-    private final ClimateCore core = new ClimateCore(rec, 60);
+    private final ClimateCore core = new ClimateCore(rec, 60, null);
 
     private void ready(int driver, int passenger, OutsideTemp outside) {
         core.onSeatsReady(true);
@@ -60,7 +60,7 @@ public class ClimateCoreTest {
         int[] bad = {0, 9, -1};
         for (int v : bad) {
             Recorder r = new Recorder();
-            ClimateCore c = new ClimateCore(r, 60);
+            ClimateCore c = new ClimateCore(r, 60, null);
             c.onSeatsReady(true);
             c.onSeatOption(Seat.DRIVER, 6);
             c.onSeatState(Seat.DRIVER, v);
@@ -152,7 +152,7 @@ public class ClimateCoreTest {
 
     @Test
     public void topLineTexts() {
-        ClimateCore c = new ClimateCore(rec, 60);
+        ClimateCore c = new ClimateCore(rec, 60, null);
         // nothing received yet
         assertEquals("Outside temperature unknown", c.pageState().top);
 
@@ -237,7 +237,7 @@ public class ClimateCoreTest {
                             continue;
                         }
                         Recorder r = new Recorder();
-                        ClimateCore c = new ClimateCore(r, 60);
+                        ClimateCore c = new ClimateCore(r, 60, null);
                         c.onSeatsReady(true);
                         c.onSeatOption(Seat.DRIVER, option);
                         c.onSeatOption(Seat.PASSENGER, option);

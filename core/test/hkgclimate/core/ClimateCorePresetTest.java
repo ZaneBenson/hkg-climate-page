@@ -18,7 +18,7 @@ public class ClimateCorePresetTest {
     }
 
     private final Recorder rec = new Recorder();
-    private final ClimateCore core = new ClimateCore(rec, 60);
+    private final ClimateCore core = new ClimateCore(rec, 60, null);
     private int changes;
 
     private void ready(int driver, int passenger) {
@@ -81,7 +81,7 @@ public class ClimateCorePresetTest {
     public void coolTargetSkippedForEveryCoolValueWhenOptionIsNotSix() {
         for (int v = 3; v <= 5; v++) {
             Recorder r = new Recorder();
-            ClimateCore c = new ClimateCore(r, 60);
+            ClimateCore c = new ClimateCore(r, 60, null);
             c.onSeatsReady(true);
             c.onSeatOption(Seat.DRIVER, 5);
             c.onSeatState(Seat.DRIVER, 2);
@@ -238,6 +238,93 @@ public class ClimateCorePresetTest {
         assertEquals(1, changes);
         core.setPresets(null);
         assertEquals(2, changes);
+    }
+
+    /** A core with a real runner on a fake car; seat sends go into the car's call list too. */
+    private static final class WithRunner {
+        final PresetRunnerTest.FakeCar car = new PresetRunnerTest.FakeCar();
+        final PresetRunnerTest.ManualScheduler sched = new PresetRunnerTest.ManualScheduler();
+        final CheckedSeatSenderTest.ListLog log = new CheckedSeatSenderTest.ListLog();
+        final PresetRunner runner =
+                new PresetRunner(new CheckedCabinSender(car, log), car, sched, log);
+        final ClimateCore core = new ClimateCore(new SeatCommander() {
+            public void set(Seat seat, int value) { car.calls.add(seat + "=" + value); }
+        }, 60, runner);
+
+        void ready(int driver, int passenger) {
+            core.onSeatsReady(true);
+            core.onSeatOption(Seat.DRIVER, 6);
+            core.onSeatOption(Seat.PASSENGER, 6);
+            core.onSeatState(Seat.DRIVER, driver);
+            core.onSeatState(Seat.PASSENGER, passenger);
+        }
+    }
+
+    private static final int L = Preset.LEAVE;
+
+    @Test
+    public void presetTapAppliesSeatsThenStartsTheRunner() {
+        WithRunner w = new WithRunner();
+        w.ready(2, 2);
+        w.core.setPresets(Arrays.asList(new Preset("Cold", 8, 8, 1, L, L, L, L, L, L, L)));
+        assertEquals(3, w.core.onPresetTap(0, 1));
+        assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8", "wheel 1"), w.car.calls);
+        assertTrue(w.runner.busy());
+        w.sched.runAll();
+        assertEquals(Arrays.asList("DRIVER=8", "PASSENGER=8", "wheel 1", "wheel 0"), w.car.calls);
+        assertEquals("Cold: wheel on", w.runner.lastResult());
+    }
+
+    @Test
+    public void seatAndPresetTapsAreRefusedWhileARunIsBusy() {
+        WithRunner w = new WithRunner();
+        w.ready(2, 2);
+        w.core.onOutside(OutsideTemp.of(9f, 0xffff, 48f, 0xffff));
+        w.core.setPresets(Arrays.asList(new Preset("T", L, L, L, L, L, 70, L, L, L, L),
+                new Preset("S", 8, 8)));
+        assertEquals(1, w.core.onPresetTap(0, 1));
+        assertTrue(w.runner.busy());
+        assertFalse(w.core.onTap(Seat.DRIVER, 2));
+        assertEquals(0, w.core.onPresetTap(1, 3));
+        assertEquals(0, w.core.onPresetTap(0, 4));
+        assertEquals(Arrays.asList("climate 50 2"), w.car.calls);
+        w.sched.runAll();
+        assertFalse(w.runner.busy());
+        assertTrue(w.core.onTap(Seat.DRIVER, 5));
+        assertEquals(2, w.core.onPresetTap(1, 6));
+    }
+
+    @Test
+    public void runnerItemsRunWhenTheSeatsAreNotReady() {
+        WithRunner w = new WithRunner();
+        w.core.setPresets(Arrays.asList(new Preset("Cold", 8, 8, 1, L, L, L, L, L, L, L),
+                new Preset("S", 8, 8)));
+        assertArrayEquals(new boolean[] {true, false, false, false}, w.core.pageState().presetEnabled);
+        assertEquals(1, w.core.onPresetTap(0, 1));
+        assertEquals(Arrays.asList("wheel 1"), w.car.calls);
+        w.sched.runAll();
+        assertEquals(0, w.core.onPresetTap(1, 2));
+    }
+
+    @Test
+    public void withoutARunnerOnlySeatItemsRunAndRunnerOnlyPresetsAreDisabled() {
+        ready(2, 2);
+        core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L),
+                new Preset("Cold", 8, L, 1, L, L, L, L, L, L, L)));
+        assertArrayEquals(new boolean[] {false, true, false, false}, core.pageState().presetEnabled);
+        assertEquals(0, core.onPresetTap(0, 1));
+        assertEquals(1, core.onPresetTap(1, 2));
+        assertEquals(Arrays.asList("DRIVER=8"), rec.sent);
+    }
+
+    @Test
+    public void aRunnerPresetWithNothingToChangeStillCountsAsStarted() {
+        WithRunner w = new WithRunner();
+        w.car.wheel = 1;
+        w.core.setPresets(Arrays.asList(new Preset("W", L, L, 1, L, L, L, L, L, L, L)));
+        assertEquals(1, w.core.onPresetTap(0, 1));
+        assertFalse(w.runner.busy());
+        assertTrue(w.car.calls.isEmpty());
     }
 
     @Test

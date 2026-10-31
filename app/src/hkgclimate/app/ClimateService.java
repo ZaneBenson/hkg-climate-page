@@ -99,7 +99,8 @@ public class ClimateService extends Service {
                     tapResults.add(sender.lastResult());
                 }
             };
-            core = new ClimateCore(send, prefs.getSwitchTempF());
+            // no preset runner yet: presets apply only their seat items until the cabin calls are wired
+            core = new ClimateCore(send, prefs.getSwitchTempF(), null);
             core.setPresets(prefs.getPresets());
             car = new CarLink(this, core, watch);
             binder = new PageLinkBinder(core, new PageLinkBinder.DebugSource() {

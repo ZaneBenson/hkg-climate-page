@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * What the climate page knows and what a tap does. Single-threaded: call everything from the
  * main looper. Feeding it state or presets never sends a command; only onTap and onPresetTap do,
- * once per request id.
+ * once per request id, and neither while the preset runner is busy.
  */
 public final class ClimateCore {
     private static final int SEATS = Seat.values().length;
@@ -15,6 +15,7 @@ public final class ClimateCore {
     private static final int NO_VALUE = -1;
 
     private final SeatCommander sender;
+    private final PresetRunner runner;
     private final TapGate gate = new TapGate();
     private final int[] seatValue = new int[SEATS];
     private final int[] seatOption = new int[SEATS];
@@ -27,8 +28,10 @@ public final class ClimateCore {
     private Runnable listener;
     private PageState last;
 
-    public ClimateCore(SeatCommander sender, int switchTempF) {
+    /** runner applies the wheel, eco and cabin items of a preset; null runs only seat items. */
+    public ClimateCore(SeatCommander sender, int switchTempF, PresetRunner runner) {
         this.sender = sender;
+        this.runner = runner;
         this.switchTempF = switchTempF;
         for (int i = 0; i < SEATS; i++) seatValue[i] = NO_VALUE;
         last = build();
@@ -57,10 +60,12 @@ public final class ClimateCore {
 
     /**
      * Handles one tap. True when a command was issued: the request id is new, the seats are
-     * ready and the seat's current value is one we know how to step from.
+     * ready, no preset is being applied, and the seat's current value is one we know how to step
+     * from.
      */
     public boolean onTap(Seat s, long requestId) {
         if (!gate.accept(requestId)) return false;
+        if (runnerBusy()) return false;
         if (!ready) return false;
         int i = s.ordinal();
         int next = SeatStepper.next(seatValue[i], currentMode(s));
@@ -82,32 +87,38 @@ public final class ClimateCore {
     }
 
     /**
-     * Applies the preset in slot index: for the driver, then the passenger, one command for each
-     * seat that has a target, is in a state we know, is not already at the target, and, for a
-     * cool target, has the heat and cool option. Returns how many commands were sent; 0 for a
-     * request id seen before, a bad or empty slot, a preset that fails Preset.check, or seats
-     * that are not ready.
+     * Applies the preset in slot index. Seats first, when the seats are ready: for the driver, then
+     * the passenger, one command for each seat that has a target, is in a state we know, is not
+     * already at the target, and, for a cool target, has the heat and cool option. Then the
+     * runner starts on the wheel, eco and cabin items, if the preset has any. Returns how many
+     * seat commands were sent, plus 1 if the runner started; 0 for a request id seen before, a
+     * bad or empty slot, a preset that fails Preset.check, or while the runner is busy.
      */
     public int onPresetTap(int index, long requestId) {
         if (!gate.accept(requestId)) return 0;
-        if (!ready) return 0;
+        if (runnerBusy()) return 0;
         if (index < 0 || index >= presets.size()) return 0;
         Preset p = presets.get(index);
         // a preset that does not check (built by hand, not through the editor) sends nothing at all
         if (Preset.check(p) != null) return 0;
         int sent = 0;
-        for (Seat s : Seat.values()) {
-            int i = s.ordinal();
-            int target = p.target(s);
-            if (target == Preset.LEAVE || !SeatValues.isKnown(target)) continue;
-            if (!SeatValues.isKnown(seatValue[i]) || seatValue[i] == target) continue;
-            if (SeatValues.modeOf(target) == Mode.COOL
-                    && seatOption[i] != SeatValues.HEAT_AND_COOL_OPTION) continue;
-            sender.set(s, target);
-            sent++;
+        if (ready && p.hasSeatItems()) {
+            for (Seat s : Seat.values()) {
+                int i = s.ordinal();
+                int target = p.target(s);
+                if (target == Preset.LEAVE || !SeatValues.isKnown(target)) continue;
+                if (!SeatValues.isKnown(seatValue[i]) || seatValue[i] == target) continue;
+                if (SeatValues.modeOf(target) == Mode.COOL
+                        && seatOption[i] != SeatValues.HEAT_AND_COOL_OPTION) continue;
+                sender.set(s, target);
+                sent++;
+            }
         }
+        if (runner != null && p.hasRunnerItems() && runner.start(p)) sent++;
         return sent;
     }
+
+    private boolean runnerBusy() { return runner != null && runner.busy(); }
 
     public PageState pageState() { return build(); }
 
@@ -156,7 +167,8 @@ public final class ClimateCore {
         boolean[] presetEnabled = new boolean[PresetList.MAX];
         for (int i = 0; i < presets.size() && i < PresetList.MAX; i++) {
             presetNames[i] = presets.get(i).name;
-            presetEnabled[i] = ready;
+            Preset p = presets.get(i);
+            presetEnabled[i] = (runner != null && p.hasRunnerItems()) || (ready && p.hasSeatItems());
         }
         return new PageState(top, text, level, kind, tapKind, enabled, presetNames, presetEnabled);
     }
