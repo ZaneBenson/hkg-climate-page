@@ -43,9 +43,12 @@ final class Prefs {
         }
     }
 
-    /** Stores the presets; PresetList.encode leaves out any that do not pass Preset.check. */
-    void setPresets(List<Preset> presets) {
-        prefs.edit().putString(KEY_PRESETS, PresetList.encode(presets)).apply();
+    /**
+     * Stores the presets; PresetList.encode leaves out any that do not pass Preset.check. Writes
+     * with commit() and returns its result: false when the write was refused.
+     */
+    boolean setPresets(List<Preset> presets) {
+        return prefs.edit().putString(KEY_PRESETS, PresetList.encode(presets)).commit();
     }
 
     /** SharedPreferences keeps only a weak reference: the caller must hold the listener. */

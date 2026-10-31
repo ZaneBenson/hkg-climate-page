@@ -304,11 +304,12 @@ public class SettingsActivity extends Activity {
         return b;
     }
 
-    /** Opens the editor for the preset at index (-1 for a new one), with the seats' options from the last state. */
+    /** Opens the editor for the preset at index (-1 for a new one), with the seats' options and the car's unit from the last state. */
     private void edit(int index) {
         try {
             Intent in = new Intent(this, PresetEditorActivity.class);
             in.putExtra(PresetEditorActivity.EXTRA_INDEX, index);
+            in.putExtra(PresetEditorActivity.EXTRA_UNIT, rawUnit);
             if (debug != null) {
                 in.putExtra(PresetEditorActivity.EXTRA_DRV_OPTION, debug.getInt(PageStates.D_DRV_OPTION, -1));
                 in.putExtra(PresetEditorActivity.EXTRA_AST_OPTION, debug.getInt(PageStates.D_AST_OPTION, -1));

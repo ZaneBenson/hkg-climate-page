@@ -533,11 +533,45 @@ check "PageStates puts the preset keys" dex_has_string "$TMP/classes.dex" preset
 check "the editor checks a preset with Preset.check before storing it" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.check'
 check "the editor builds its seat choices with SeatChoices" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.seatGroup:' 'Lhkgclimate/core/SeatChoices;\.offered'
-check "the editor numbers each seat's buttons from its own id base (SeatChoices.idOf)" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.seatGroup:' 'Lhkgclimate/core/SeatChoices;\.idOf'
-check "the editor maps a checked id back with its seat's base (SeatChoices.valueOfId)" \
-    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.chosen:' 'Lhkgclimate/core/SeatChoices;\.valueOfId'
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.seatSpinner:' 'Lhkgclimate/core/SeatChoices;\.offered'
+check "the editor labels a seat's choices with SeatChoices.label" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.seatSpinner:' 'Lhkgclimate/core/SeatChoices;\.label'
+check "the editor builds its temperature choices with the car's unit (PresetChoices.temperatureChoices)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.buildViews:' 'Lhkgclimate/core/PresetChoices;\.temperatureChoices'
+check "the editor greys its spinners by climate mode (PresetChoices.greyed)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.applyGreying:' 'Lhkgclimate/core/PresetChoices;\.greyed'
+check "the editor shows each item as a Spinner" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' 'Landroid/widget/Spinner;\.<init>'
+check "the editor gives each spinner its own fixed view id" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.itemSpinner:' '\.setId:(I)V'
+check "the editor saves the whole preset (the 11-argument Preset constructor)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.<init>:(Ljava/lang/String;IIIIIIIIII)V'
+check "the editor checks the whole preset (Preset.check(Preset))" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.check:(Lhkgclimate/core/Preset;)'
+check "the editor uses no RadioGroup or RadioButton" \
+    code_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.' 'Landroid/widget/Radio'
+scratch_dex radio PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.RadioGroup(c).addView(new android.widget.RadioButton(c)); } }'
+scratch_dex noradio PresetEditorActivity 'package hkgclimate.app; class PresetEditorActivity { void go(android.content.Context c) { new android.widget.Spinner(c); } }'
+check "self-test: the radio check flags an editor that uses a RadioGroup" \
+    fails code_lacks_ref "$ST/radio/code.txt" 'hkgclimate.app.PresetEditorActivity.' 'Landroid/widget/Radio'
+check "self-test: the radio check passes an editor that uses a Spinner" \
+    code_lacks_ref "$ST/noradio/code.txt" 'hkgclimate.app.PresetEditorActivity.' 'Landroid/widget/Radio'
+check "self-test: the radio check fails a listing with no editor code" \
+    fails code_lacks_ref "$ST/caller/code.txt" 'hkgclimate.app.PresetEditorActivity.' 'Landroid/widget/Radio'
+check "Prefs.setPresets writes with commit()" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Prefs.setPresets:' 'Landroid/content/SharedPreferences\$Editor;\.commit:'
+check "Prefs.setPresets does not use apply()" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.Prefs.setPresets:' 'Landroid/content/SharedPreferences\$Editor;\.apply:'
+check "self-test: method_has_ref sees apply() in Prefs.setSwitchTempF (the apply check above can see one)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.Prefs.setSwitchTempF:' 'Landroid/content/SharedPreferences\$Editor;\.apply:'
+check "the editor stores through Prefs.setPresets and reads back its result (a boolean)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/app/Prefs;\.setPresets:(Ljava/util/List;)Z'
+check "the editor says when the settings write was refused" \
+    dex_has_string "$TMP/classes.dex" "could not save: the settings write was refused"
+check "the editor shows a save exception in full (could not save: class and message)" \
+    dex_has_string "$TMP/classes.dex" "could not save: "
+check "the editor logs a save exception with its stack trace (Log.w with a Throwable)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.fail:' 'Landroid/util/Log;\.w:(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I'
 check "the settings list uses PresetSummary" \
     has_ref "$TMP/dexcode.txt" 'Lhkgclimate/core/PresetSummary;\.of'
 check "ClimateService checks every overdue send (SendWatch.allOverdue)" \
