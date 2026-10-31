@@ -1,0 +1,70 @@
+# Builds and tests the package, the kit and the combined USB zip on every push and pull request.
+# The APK is signed with a throwaway key made fresh on each run (build-app.sh creates one when
+# private/keys is empty): the owner's key never leaves their machine. A CI package can't update an
+# install signed with the owner's key, so install builds from tools/build-*.sh on the owner's machine.
+# The package mock test needs the stock panel files (private/stock/260507), so it reports SKIP here.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # build-package.sh writes git describe into BUILD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Host packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang lld qemu-user mksh
+
+      - name: Android SDK (platform 19, build-tools 30.0.3)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-19" "build-tools;30.0.3" > /dev/null
+          echo "ANDROID_SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      - name: Toolchain (Maven jars, Python venv)
+        run: |
+          python3 -m venv private/toolchain/venv
+          private/toolchain/venv/bin/pip install --require-hashes -r tools/requirements.txt
+          tools/toolchain.sh fetch
+          tools/toolchain.sh check
+
+      - name: Host tests
+        run: |
+          tools/test-java.sh
+          sh tests/toolchain/run.sh
+          sh tests/app/check-app.sh
+          sh tests/panel/check-page.sh
+          python3 -m unittest -v tests/panel/test_patch_panel.py
+          sh tests/kit/run.sh
+
+      - name: Build package, kit and USB zip
+        run: |
+          tools/build-app.sh
+          tools/build-package.sh
+          rc=0; sh tests/package/run.sh || rc=$?
+          [ "$rc" = 0 ] || [ "$rc" = 2 ] # 2: SKIP, no stock files on the runner
+          tools/build-kit.sh
+          tools/build-usb.sh
+          sh tests/usb/run.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hkg-climate-ci-${{ github.sha }}
+          path: dist/*.zip
+          if-no-files-found: error

@@ -39,6 +39,11 @@ Then:
 The first `build-app.sh` run creates the signing key in `private/keys/`: back it up. The panel
 patch files are committed, so `tools/build-panel.sh` is not needed to package.
 
+CI (`.github/workflows/build.yml`) runs the same tests and builds on every push and uploads the
+zips as a build artifact. Those are signed with a throwaway key made on each run, so they can't
+update an install signed with your own key: build the zips you install on your own machine. The
+package mock test needs the stock panel files, so CI skips it.
+
 ## About
 
 Target car: 2023 US Hyundai Ioniq 5 (`NEEV23.USA.`, firmware 260507).
