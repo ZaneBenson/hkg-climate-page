@@ -227,26 +227,33 @@ public class ClimateCoreTest {
     @Test
     public void tapKindAgreesWithTheModeOfTheNextTap() {
         OutsideTemp[] temps = {F48, F70};
-        for (Seat seat : Seat.values()) {
-            for (OutsideTemp t : temps) {
-                for (int v = 2; v <= 8; v++) {
-                    Recorder r = new Recorder();
-                    ClimateCore c = new ClimateCore(r, 60);
-                    c.onSeatsReady(true);
-                    c.onSeatOption(Seat.DRIVER, 6);
-                    c.onSeatOption(Seat.PASSENGER, 6);
-                    c.onSeatState(Seat.DRIVER, v);
-                    c.onSeatState(Seat.PASSENGER, v);
-                    c.onOutside(t);
-                    int kind = c.pageState().seatTapKind[seat.ordinal()];
-                    assertTrue(c.onTap(seat, 1));
-                    String sent = r.sent.get(0);
-                    int value = Integer.parseInt(sent.substring(sent.indexOf('=') + 1));
-                    // a seat stepping down to off keeps the mode it is in
-                    Mode m = SeatValues.modeOf(value == SeatValues.OFF ? v : value);
-                    int sentKind = m == Mode.HEAT ? 1 : m == Mode.COOL ? 2 : 0;
-                    String why = seat + " v" + v + " " + sent;
-                    assertEquals(why, kind, sentKind);
+        // option 6 is heat and cool (all states); option 0 is heat only (off or heat states)
+        int[] options = {6, 0};
+        for (int option : options) {
+            for (Seat seat : Seat.values()) {
+                for (OutsideTemp t : temps) {
+                    for (int v = 2; v <= 8; v++) {
+                        if (option == 0 && v > 2 && v < 6) {
+                            continue;
+                        }
+                        Recorder r = new Recorder();
+                        ClimateCore c = new ClimateCore(r, 60);
+                        c.onSeatsReady(true);
+                        c.onSeatOption(Seat.DRIVER, option);
+                        c.onSeatOption(Seat.PASSENGER, option);
+                        c.onSeatState(Seat.DRIVER, v);
+                        c.onSeatState(Seat.PASSENGER, v);
+                        c.onOutside(t);
+                        int kind = c.pageState().seatTapKind[seat.ordinal()];
+                        assertTrue(c.onTap(seat, 1));
+                        String sent = r.sent.get(0);
+                        int value = Integer.parseInt(sent.substring(sent.indexOf('=') + 1));
+                        // a seat stepping down to off keeps the mode it is in
+                        Mode m = SeatValues.modeOf(value == SeatValues.OFF ? v : value);
+                        int sentKind = m == Mode.HEAT ? 1 : m == Mode.COOL ? 2 : 0;
+                        String why = "option " + option + " " + seat + " v" + v + " " + sent;
+                        assertEquals(why, kind, sentKind);
+                    }
                 }
             }
         }

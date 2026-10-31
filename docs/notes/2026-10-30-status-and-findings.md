@@ -32,21 +32,21 @@ The owner approved this command for the sending build:
 - **Caller:** our app `hkgclimate.app` (an ordinary app uid). The stock climate app calls it as
   `android.uid.phone`; whether the service accepts an ordinary uid is untested. If it refuses,
   the fallback is a small NEMESIS helper running as the system uid.
-- **Gate:** one step per tap, only while the approval switch in our settings app is on; nothing
-  is sent at boot or on a state update.
+- **Gate:** one step per tap; nothing is sent at boot or on a state update. Owner removed the
+  approval switch for version 1 (2026-10-30); taps send by default.
 
 ## Design summary
 
 - A page on the right-side split screen (page id 4), reached by swiping like the stock
-  Clock and Energy pages. Version 1 layout "B": outside temperature line on top, two seat
-  buttons (driver left, passenger right) at final size, four greyed-out preset slots below,
-  and a yellow "Test mode: taps are logged, not sent" strip until the owner approves the
-  seat command.
+  Clock and Energy pages. Version 1 layout "B": a top line with only the outside
+  temperature, two 180 dp seat buttons (driver left, passenger right), and four greyed-out
+  preset slots below. A seat button's border (orange, blue or grey) shows what the next tap
+  does. No test strip.
 - Seat button: each tap steps off -> high -> mid -> low -> off. Heat below the switch
   temperature (default 60 °F), cool at or above it; the mode is chosen when the seat goes
   from off to on.
-- A settings app (main screen) for the switch temperature, turning the page on/off, the
-  seat-command approval switch, and later presets.
+- A settings app (main screen) for the switch temperature, turning the page on/off, and later
+  presets. No approval switch: taps send.
 - Presets (version 2): named buttons applying several climate settings; each setting
   joins only after its values are confirmed from a log of the stock controls and approved
   by the owner.

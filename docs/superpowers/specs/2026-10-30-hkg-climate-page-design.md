@@ -36,7 +36,7 @@ a cold or hot morning means many separate taps. The owner wants:
   ("Driver · heat mid"). **Owner's changes, 2026-10-30:** the top line is only the outside
   temperature; a seat button's border says what the next tap does (orange = heats, blue =
   cools, grey = unavailable); no test strip and no approval switch (taps send the approved
-  command); seat buttons 180 dp square, preset slots 180 × 50 dp, 24 dp gaps.
+  command); seat buttons 180 dp square, preset slots 180 × 50 dp, level bars 36 × 9 dp, 24 dp gaps.
 - **Seat button:** each tap steps off -> high -> mid -> low -> off (the stock order). Below
   the switch temperature it heats, at or above it cools. The mode is chosen when the seat
   goes from off to on; while on, taps keep that mode until it returns to off (no flapping).
