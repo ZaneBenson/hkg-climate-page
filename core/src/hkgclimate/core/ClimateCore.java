@@ -34,8 +34,12 @@ public final class ClimateCore {
     private final TapGate gate = new TapGate();
     private final int[] seatValue = new int[SEATS];
     private final int[] seatOption = new int[SEATS];
-    /** The seat's next tap uses the other mode (set by a swap while the seat is off). */
-    private final boolean[] swapped = new boolean[SEATS];
+    /**
+     * The mode a swap chose for the seat's next tap (set while the seat is off); null for none.
+     * Absolute: it holds if the switch temperature or the outside reading changes, and ends when
+     * the seat turns on.
+     */
+    private final Mode[] swapMode = new Mode[SEATS];
     private List<Preset> presets = new ArrayList<Preset>();
 
     // the highlight
@@ -76,11 +80,11 @@ public final class ClimateCore {
         changed();
     }
 
-    /** A seat's new state; a swap ends once the seat is no longer off. */
+    /** A seat's new state; a swap ends once the seat is on (an unknown reading does not end it). */
     public void onSeatState(Seat s, int value) {
         int i = s.ordinal();
         seatValue[i] = value;
-        if (value != SeatValues.OFF) swapped[i] = false;
+        if (SeatValues.modeOf(value) != null) swapMode[i] = null;
         checkHighlight(clock.now());
         changed();
     }
@@ -130,7 +134,7 @@ public final class ClimateCore {
         int i = s.ordinal();
         if (seatValue[i] != SeatValues.OFF) return false;
         if (seatOption[i] != SeatValues.HEAT_AND_COOL_OPTION) return false;
-        swapped[i] = !swapped[i];
+        swapMode[i] = nextMode(s) == Mode.COOL ? Mode.HEAT : Mode.COOL;
         changed();
         return true;
     }
@@ -278,12 +282,11 @@ public final class ClimateCore {
         return SeatStepper.chooseMode(usableOutside(), switchTempF, seatOption[s.ordinal()]);
     }
 
-    /** The mode an off seat's next tap turns it on in: the automatic choice, or the other after a swap. */
+    /** The mode an off seat's next tap turns it on in: the mode a swap chose, or the automatic choice. */
     private Mode nextMode(Seat s) {
         int i = s.ordinal();
-        Mode m = currentMode(s);
-        if (!swapped[i] || seatOption[i] != SeatValues.HEAT_AND_COOL_OPTION) return m;
-        return m == Mode.COOL ? Mode.HEAT : Mode.COOL;
+        if (swapMode[i] == null || seatOption[i] != SeatValues.HEAT_AND_COOL_OPTION) return currentMode(s);
+        return swapMode[i];
     }
 
     /** The reading, only when the page can show it in the display unit; otherwise unknown (heat). */

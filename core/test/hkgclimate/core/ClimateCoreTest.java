@@ -454,6 +454,41 @@ public class ClimateCoreTest {
     }
 
     @Test
+    public void aPendingSwapHoldsWhenTheSwitchTemperatureChanges() {
+        ready(2, 2, F48);
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 1));
+        assertEquals(2, tapKind(Seat.DRIVER)); // cool, against the automatic heat at 48
+        core.setSwitchTempF(40); // the automatic choice at 48 is now cool
+        assertEquals(2, tapKind(Seat.PASSENGER)); // not swapped: cool is now its automatic choice
+        assertEquals(2, tapKind(Seat.DRIVER)); // the swap chose cool and holds (relative, it would flip to heat)
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=5]", rec.sent.toString());
+    }
+
+    @Test
+    public void aPendingSwapHoldsWhenTheOutsideReadingCrossesTheSwitchTemperature() {
+        ready(2, 2, F48);
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 1)); // cool
+        core.onOutside(F70); // automatic is cool now
+        assertEquals(2, tapKind(Seat.DRIVER));
+        core.onOutside(F48);
+        assertEquals(2, tapKind(Seat.DRIVER));
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=5]", rec.sent.toString());
+    }
+
+    @Test
+    public void anUnknownSeatReadingDoesNotEndAPendingSwap() {
+        ready(2, 2, F48);
+        assertTrue(core.onSeatSwap(Seat.DRIVER, 1));
+        core.onSeatState(Seat.DRIVER, 9); // an unknown reading
+        core.onSeatState(Seat.DRIVER, 2);
+        assertEquals(2, tapKind(Seat.DRIVER));
+        assertTrue(core.onTap(Seat.DRIVER, 2));
+        assertEquals("[DRIVER=5]", rec.sent.toString());
+    }
+
+    @Test
     public void aSwapIsIgnoredIfTheSeatLosesItsCoolOption() {
         ready(2, 2, F48);
         assertTrue(core.onSeatSwap(Seat.DRIVER, 1));
