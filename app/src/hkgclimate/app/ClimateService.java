@@ -57,7 +57,8 @@ public class ClimateService extends Service {
     private String lastSend;
     // main thread: the last tap started the preset runner, so the last-command line shows its result
     private boolean runShown;
-    // main thread: SEATS_NOT_READY when the last tap was a preset whose seats were skipped for that
+    // main thread: SEATS_NOT_READY when the last tap was a preset whose seats were skipped for that,
+    // or "<name>: seats not ready" for a seat-only preset that sent nothing for that reason
     private String seatNote;
     // main thread: the sender's result for each command of the tap being handled
     private final ArrayList<String> tapResults = new ArrayList<String>();
@@ -143,6 +144,10 @@ public class ClimateService extends Service {
                 @Override public void afterSend(int presetIndex, int sent) {
                     ClimateService.this.afterSend(presetIndex, sent);
                 }
+
+                @Override public void presetNotSent(int presetIndex) {
+                    ClimateService.this.presetNotSent(presetIndex);
+                }
             });
             car.setOnDebugChange(new Runnable() {
                 @Override public void run() { binder.onDebugChanged(); }
@@ -199,6 +204,26 @@ public class ClimateService extends Service {
             debugChanged();
         } catch (Throwable t) {
             Log.w(TAG, "recording the send result failed", t);
+        }
+    }
+
+    /**
+     * Main thread, after a preset tap the core sent nothing for: when that was because the seats were
+     * not ready (a valid seat-only preset, no preset running, seat service not ready), the
+     * last-command line adds "<name>: seats not ready". Nothing else changes: no watch check, the
+     * seat result and the runner's line stay as they were. (The page greys such a slot, so this is
+     * the race where the seats drop out just before a tap.)
+     */
+    private void presetNotSent(int presetIndex) {
+        try {
+            if (runner != null && runner.busy()) return; // ignored because a preset is running
+            Preset p = presetAt(presetIndex);
+            if (p == null || !p.hasSeatItems() || p.hasRunnerItems() || Preset.check(p) != null) return;
+            if (seatsReady()) return;
+            seatNote = p.name + ": " + SEATS_NOT_READY;
+            debugChanged();
+        } catch (Throwable t) {
+            Log.w(TAG, "recording the preset result failed", t);
         }
     }
 

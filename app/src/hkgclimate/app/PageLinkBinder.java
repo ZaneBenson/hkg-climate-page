@@ -34,6 +34,9 @@ final class PageLinkBinder extends Binder {
          * (for a preset, its seat sends plus 1 when the preset runner started).
          */
         void afterSend(int presetIndex, int sent);
+
+        /** A preset tap the core sent nothing for (to note seats that were not ready). */
+        void presetNotSent(int presetIndex);
     }
 
     private static final String TAG = CarLink.TAG;
@@ -177,6 +180,7 @@ final class PageLinkBinder extends Binder {
         try {
             int sent = core.onPresetTap(index, id);
             if (sent > 0) sent(index, sent);
+            else notSent(index);
         } catch (Throwable t) {
             Log.w(TAG, "preset tap failed", t);
         }
@@ -186,6 +190,12 @@ final class PageLinkBinder extends Binder {
     private void sent(int presetIndex, int count) {
         AfterSend r = afterSend;
         if (r != null) r.afterSend(presetIndex, count);
+    }
+
+    /** Main thread: a preset tap sent nothing; no send bookkeeping, only the last-command note. */
+    private void notSent(int presetIndex) {
+        AfterSend r = afterSend;
+        if (r != null) r.presetNotSent(presetIndex);
     }
 
     private void subscribe(IBinder cb) {

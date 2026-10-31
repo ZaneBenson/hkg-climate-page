@@ -601,6 +601,22 @@ check "CabinStateReader gets the DATC manager from VehicleInfoManager.getService
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.CabinStateReader.' 'Lcom/hkmc/VehicleInfoManager;\.getService:'
 check 'the settings screen calls its command line "Last command"' dex_has_string "$TMP/classes.dex" "Last command: "
 check "the ClimateService notes a preset whose seats were not ready" dex_has_string "$TMP/classes.dex" "seats not ready"
+check "a preset tap that sent nothing goes to the seats-not-ready note (PageLinkBinder.notSent)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'PageLinkBinder;\.notSent:'
+check "PageLinkBinder.notSent calls AfterSend.presetNotSent" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.notSent:' 'PageLinkBinder\$AfterSend;\.presetNotSent:'
+check "ClimateService.presetNotSent checks the seat readiness and updates the screen" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.presetNotSent:' 'ClimateService;\.debugChanged:'
+check "ClimateService.presetNotSent schedules no watch check" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.presetNotSent:' 'Landroid/os/Handler;\.postDelayed:'
+check "ClimateService.presetNotSent leaves the seat result (lastSend) alone" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.presetNotSent:' 'iput-object.*ClimateService;\.lastSend:'
+check "ClimateService.presetNotSent sends nothing (no core, sender or runner start)" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.presetNotSent:' 'CheckedSeatSender\|CheckedCabinSender\|PresetRunner;\.start:\|ClimateCore;\.on'
+check "self-test: method_has_ref sees afterSend's postDelayed (the lacks-checks above can see one)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.afterSend:' 'Landroid/os/Handler;\.postDelayed:'
+check "self-test: method_has_ref sees afterSend writing lastSend" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.afterSend:' 'iput-object.*ClimateService;\.lastSend:'
 check "preset taps reach no stock-call class directly" \
     method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'CabinCalls\|DatcClimateCalls\|CheckedCabinSender'
 
