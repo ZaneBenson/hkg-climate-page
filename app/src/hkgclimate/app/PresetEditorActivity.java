@@ -16,7 +16,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import hkgclimate.core.Preset;
 import hkgclimate.core.PresetList;
-import hkgclimate.core.SeatValues;
+import hkgclimate.core.SeatChoices;
 import java.util.List;
 
 /**
@@ -24,7 +24,7 @@ import java.util.List;
  * SettingsActivity (not exported). Extras: "index" (the slot being edited, -1 for a new preset)
  * and "drvOption" / "astOption" (the seats' raw option values from the settings screen's last
  * state; missing or unknown means heat and cool). The cool choices appear only for a seat whose
- * option is heat and cool. Save writes the preferences directly, only after Preset.check passes.
+ * option is heat and cool, except a cool value the preset already has for that seat. Save writes the preferences directly, only after Preset.check passes.
  */
 public class PresetEditorActivity extends Activity {
     private static final String TAG = CarLink.TAG;
@@ -32,14 +32,6 @@ public class PresetEditorActivity extends Activity {
     static final String EXTRA_INDEX = "index";
     static final String EXTRA_DRV_OPTION = PageStates.D_DRV_OPTION;
     static final String EXTRA_AST_OPTION = PageStates.D_AST_OPTION;
-
-    /** The seat choices, in the order shown, and the value each one stands for. */
-    static final String[] LABELS = {"Leave as is", "Off", "Heat high", "Heat mid", "Heat low",
-            "Cool high", "Cool mid", "Cool low"};
-    static final int[] VALUES = {Preset.LEAVE, SeatValues.OFF, SeatValues.HEAT_HIGH, SeatValues.HEAT_MID,
-            SeatValues.HEAT_LOW, SeatValues.COOL_HIGH, SeatValues.COOL_MID, SeatValues.COOL_LOW};
-    /** Choices from this position on are the cool ones. */
-    private static final int FIRST_COOL = 5;
 
     private Prefs prefs;
     private int index = -1;
@@ -134,28 +126,25 @@ public class PresetEditorActivity extends Activity {
     }
 
     /**
-     * One seat's group of choices. Each button's id is its position + 1. The cool choices are left
-     * out when the seat's option is known and is not heat and cool; a stored value that is left out
-     * shows as "Leave as is".
+     * One seat's group of choices (SeatChoices decides which are offered). Each button's id is its
+     * position + 1. The seat's stored choice is always offered and checked, so a seat that is not
+     * touched keeps its value when the preset is saved.
      */
     private RadioGroup seatGroup(LinearLayout root, String title, int option, int current) {
         TextView label = text(title, 22);
         label.setPadding(0, dp(24), 0, dp(8));
         root.addView(label);
-        boolean cool = option < 0 || option == SeatValues.HEAT_AND_COOL_OPTION;
         RadioGroup g = new RadioGroup(this);
         g.setOrientation(RadioGroup.VERTICAL);
-        int checked = 1; // Leave as is
-        for (int i = 0; i < LABELS.length; i++) {
-            if (i >= FIRST_COOL && !cool) continue;
+        for (int i = 0; i < SeatChoices.LABELS.length; i++) {
+            if (!SeatChoices.offered(i, option, current)) continue;
             RadioButton b = new RadioButton(this);
             b.setId(i + 1);
-            b.setText(LABELS[i]);
+            b.setText(SeatChoices.label(i, option));
             b.setTextSize(22);
             g.addView(b);
-            if (VALUES[i] == current) checked = i + 1;
         }
-        g.check(checked);
+        g.check(SeatChoices.positionOf(current) + 1);
         root.addView(g);
         return g;
     }
@@ -163,7 +152,7 @@ public class PresetEditorActivity extends Activity {
     /** The value of the choice checked in the group; Leave as is when none is. */
     private static int chosen(RadioGroup g) {
         int pos = g.getCheckedRadioButtonId() - 1;
-        return pos >= 0 && pos < VALUES.length ? VALUES[pos] : Preset.LEAVE;
+        return pos >= 0 && pos < SeatChoices.VALUES.length ? SeatChoices.VALUES[pos] : Preset.LEAVE;
     }
 
     /** Checks the input with Preset.check; only a valid preset is stored. The reason shows otherwise. */

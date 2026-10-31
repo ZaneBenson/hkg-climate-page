@@ -368,7 +368,8 @@ check "the editor activity is in the manifest, not exported, with no intent filt
     editor_not_exported "$TMP/manifest.txt"
 sed 's/(type 0x12)0x0$/(type 0x12)0xffffffff/' "$TMP/manifest.txt" > "$TMP/manifest-bad.txt"
 check "self-test: editor_not_exported fails on an exported editor" fails editor_not_exported "$TMP/manifest-bad.txt"
-check "self-test: editor_not_exported fails when there is no editor" fails editor_not_exported "$TMP/badging"
+sed 's/PresetEditorActivity/OtherActivity/' "$TMP/manifest.txt" > "$TMP/manifest-none.txt"
+check "self-test: editor_not_exported fails when there is no editor" fails editor_not_exported "$TMP/manifest-none.txt"
 check "dex has PresetEditorActivity" grep -q "Lhkgclimate/app/PresetEditorActivity;" "$TMP/dex.txt"
 check "PageLinkBinder serves a preset tap (ClimateCore.onPresetTap)" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'Lhkgclimate/core/ClimateCore;\.onPresetTap'
@@ -383,6 +384,14 @@ check "ClimateService loads the presets into the core" \
 check "PageStates puts the preset keys" dex_has_string "$TMP/classes.dex" presetEnabled
 check "the editor checks a preset with Preset.check before storing it" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.check'
+check "the editor builds its seat choices with SeatChoices" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.seatGroup:' 'Lhkgclimate/core/SeatChoices;\.offered'
+check "the settings list uses PresetSummary" \
+    has_ref "$TMP/dexcode.txt" 'Lhkgclimate/core/PresetSummary;\.of'
+check "ClimateService checks every overdue send (SendWatch.allOverdue)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.checkWatch:' 'Lhkgclimate/core/SendWatch;\.allOverdue'
+check "ClimateService.afterSend picks the worst result of the tap" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.afterSend:' 'Lhkgclimate/core/SendSummary;\.worst'
 check "the settings screen stores presets through PresetList" \
     has_ref "$TMP/dexcode.txt" 'Lhkgclimate/core/PresetList;\.moveUp'
 check "preset sends go through the core and CheckedSeatSender only (no new send path)" \

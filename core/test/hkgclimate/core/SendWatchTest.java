@@ -103,4 +103,32 @@ public class SendWatchTest {
         assertNull(w.overdue(3500));
         assertEquals(AST4, w.overdue(5000));
     }
+
+    @Test
+    public void allOverdueReportsEverySendWaitingOldestFirstAndForgetsThem() {
+        SendWatch w = new SendWatch();
+        w.sent(Seat.PASSENGER, 4, 100);
+        w.sent(Seat.DRIVER, 8, 200);
+        assertEquals(java.util.Arrays.asList(AST4, DRV8), w.allOverdue(3200));
+        assertEquals(0, w.allOverdue(99999).size());
+    }
+
+    @Test
+    public void allOverdueLeavesASendThatIsNotYetOverdue() {
+        SendWatch w = new SendWatch();
+        w.sent(Seat.DRIVER, 8, 0);
+        w.sent(Seat.PASSENGER, 4, 2000);
+        assertEquals(java.util.Arrays.asList(DRV8), w.allOverdue(3000));
+        assertEquals(java.util.Arrays.asList(AST4), w.allOverdue(5000));
+    }
+
+    @Test
+    public void allOverdueIsEmptyWhenTheStateFollowedBoth() {
+        SendWatch w = new SendWatch();
+        w.sent(Seat.DRIVER, 8, 0);
+        w.sent(Seat.PASSENGER, 4, 0);
+        w.onState(Seat.DRIVER, 8);
+        w.onState(Seat.PASSENGER, 4);
+        assertEquals(0, w.allOverdue(9000).size());
+    }
 }

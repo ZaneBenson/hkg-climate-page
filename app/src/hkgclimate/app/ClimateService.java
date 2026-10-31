@@ -15,7 +15,10 @@ import hkgclimate.core.Clock;
 import hkgclimate.core.Seat;
 import hkgclimate.core.SeatCommander;
 import hkgclimate.core.SendLog;
+import hkgclimate.core.SendSummary;
 import hkgclimate.core.SendWatch;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The climate service the page binds to. It owns the core, reads the car through CarLink and
@@ -39,6 +42,8 @@ public class ClimateService extends Service {
     private CheckedSeatSender sender;
     // main thread: the sender's last result or the latest "no change" text, whichever came last
     private String lastSend;
+    // main thread: the sender's result for each command of the tap being handled
+    private final ArrayList<String> tapResults = new ArrayList<String>();
     private boolean destroyed;
     // held here: SharedPreferences keeps only a weak reference to its listeners
     private final SharedPreferences.OnSharedPreferenceChangeListener prefListener =
@@ -46,10 +51,18 @@ public class ClimateService extends Service {
                 @Override
                 public void onSharedPreferenceChanged(SharedPreferences sp, String key) {
                     if (core != null && (key == null || Prefs.KEY_SWITCH_TEMP_F.equals(key))) {
-                        core.setSwitchTempF(prefs.getSwitchTempF());
+                        try {
+                            core.setSwitchTempF(prefs.getSwitchTempF());
+                        } catch (Throwable t) {
+                            Log.w(TAG, "reloading the switch temperature failed", t);
+                        }
                     }
                     if (core != null && (key == null || Prefs.KEY_PRESETS.equals(key))) {
-                        core.setPresets(prefs.getPresets());
+                        try {
+                            core.setPresets(prefs.getPresets());
+                        } catch (Throwable t) {
+                            Log.w(TAG, "reloading the presets failed", t);
+                        }
                     }
                     if (keeper != null && (key == null || Prefs.KEY_PAGE_ENABLED.equals(key))) {
                         try {
@@ -83,6 +96,7 @@ public class ClimateService extends Service {
                 @Override
                 public void set(Seat seat, int value) {
                     sender.set(seat, value);
+                    tapResults.add(sender.lastResult());
                 }
             };
             core = new ClimateCore(send, prefs.getSwitchTempF());
@@ -131,27 +145,38 @@ public class ClimateService extends Service {
         return START_STICKY;
     }
 
-    /** Main thread, once after each tap that sent a command (PageLinkBinder calls it): record its result and watch a send. */
+    /**
+     * Main thread, once after each tap that sent a command (PageLinkBinder calls it): record the worst
+     * result of the tap (a refusal or failure over a send) and schedule one watch check. The check is
+     * scheduled whenever the tap sent anything, so a send that went out is watched even when the
+     * tap's other command failed.
+     */
     private void afterSend() {
         try {
-            String result = sender.lastResult();
-            lastSend = result;
-            if (!destroyed && result != null && result.startsWith("sent ")) {
-                handler.postDelayed(watchCheck, SendWatch.WAIT_MS);
-            }
+            lastSend = SendSummary.worst(tapResults);
+            tapResults.clear();
+            if (!destroyed) handler.postDelayed(watchCheck, SendWatch.WAIT_MS);
             debugChanged();
         } catch (Throwable t) {
             Log.w(TAG, "recording the send result failed", t);
         }
     }
 
-    /** Main thread, WAIT_MS after a send: report a send the car has not followed (never resend). */
+    /**
+     * Main thread, WAIT_MS after a tap's sends: report every send the car has not followed, each one
+     * logged (never resent); the last-send line shows them all, separated by "; ".
+     */
     private void checkWatch() {
         try {
-            String late = watch.overdue(SystemClock.elapsedRealtime());
-            if (late == null) return;
-            logSend(late);
-            lastSend = late;
+            List<String> late = watch.allOverdue(SystemClock.elapsedRealtime());
+            if (late.isEmpty()) return;
+            StringBuilder sb = new StringBuilder();
+            for (String line : late) {
+                logSend(line);
+                if (sb.length() > 0) sb.append("; ");
+                sb.append(line);
+            }
+            lastSend = sb.toString();
             debugChanged();
         } catch (Throwable t) {
             Log.w(TAG, "checking the send failed", t);

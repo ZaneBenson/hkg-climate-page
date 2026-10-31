@@ -24,6 +24,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import hkgclimate.core.Preset;
 import hkgclimate.core.PresetList;
+import hkgclimate.core.PresetSummary;
 import hkgclimate.core.SeatValues;
 import hkgclimate.core.SwitchTemp;
 import hkgclimate.link.PageLink;
@@ -40,7 +41,6 @@ public class SettingsActivity extends Activity {
     private static final int DEFAULT_RAW_UNIT = 2;
     private static final String MINUS = "−";
     private static final String DEGREE = "°";
-    private static final String DOT = " · ";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -265,7 +265,7 @@ public class SettingsActivity extends Activity {
             for (int i = 0; i < list.size(); i++) {
                 final int at = i;
                 final Preset p = list.get(i);
-                TextView line = text(summary(p), 20);
+                TextView line = text(PresetSummary.of(p), 20);
                 line.setPadding(0, dp(12), 0, 0);
                 presetBox.addView(line);
                 LinearLayout row = new LinearLayout(this);
@@ -302,21 +302,6 @@ public class SettingsActivity extends Activity {
         b.setEnabled(enabled);
         b.setOnClickListener(l);
         return b;
-    }
-
-    /** "Cold: Driver heat high · Passenger off"; a seat left as is is not named. */
-    static String summary(Preset p) {
-        StringBuilder sb = new StringBuilder(p.name).append(':');
-        boolean first = true;
-        for (int seat = 0; seat < 2; seat++) {
-            int v = seat == 0 ? p.driver : p.passenger;
-            if (v == Preset.LEAVE) continue;
-            String w = SeatValues.words(v);
-            sb.append(first ? " " : DOT).append(seat == 0 ? "Driver " : "Passenger ")
-                    .append(w == null ? String.valueOf(v) : w);
-            first = false;
-        }
-        return sb.toString();
     }
 
     /** Opens the editor for the preset at index (-1 for a new one), with the seats' options from the last state. */

@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import hkgclimate.core.Preset;
 import hkgclimate.core.PresetList;
 import hkgclimate.core.SwitchTemp;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Our settings, in the app's private preferences. */
@@ -33,8 +34,14 @@ final class Prefs {
 
     void setPageEnabled(boolean enabled) { prefs.edit().putBoolean(KEY_PAGE_ENABLED, enabled).apply(); }
 
-    /** The saved presets: the valid lines of the stored text, at most PresetList.MAX. */
-    List<Preset> getPresets() { return PresetList.decode(prefs.getString(KEY_PRESETS, "")); }
+    /** The saved presets: the valid lines of the stored text, at most PresetList.MAX; none if the value is unreadable. */
+    List<Preset> getPresets() {
+        try {
+            return PresetList.decode(prefs.getString(KEY_PRESETS, ""));
+        } catch (Throwable t) {
+            return new ArrayList<Preset>();
+        }
+    }
 
     /** Stores the presets; PresetList.encode leaves out any that do not pass Preset.check. */
     void setPresets(List<Preset> presets) {

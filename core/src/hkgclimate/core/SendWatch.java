@@ -1,5 +1,8 @@
 package hkgclimate.core;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Notices a send the car ignored: a sent value is pending until the seat state reports it, and
  * is overdue if that has not happened within WAIT_MS. It only reports; it never resends.
@@ -39,5 +42,13 @@ public final class SendWatch {
         pending[oldest] = false;
         return "no change after 3 s: "
                 + CheckedSeatSender.methodName(Seat.values()[oldest]) + " " + value[oldest];
+    }
+
+    /** Every send waiting at least WAIT_MS, oldest first, each one forgotten; empty when none. */
+    public synchronized List<String> allOverdue(long now) {
+        List<String> out = new ArrayList<String>();
+        String line;
+        while ((line = overdue(now)) != null) out.add(line);
+        return out;
     }
 }
