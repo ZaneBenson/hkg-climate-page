@@ -6,9 +6,10 @@ switch temperature, cooling above it), the outside temperature, and preset butto
 apply several climate settings at once. A small settings app sets the switch temperature
 and builds the presets.
 
-**Status: release v1.0.0: seat buttons, outside temperature and presets of the seat settings; install from dist/hkg-climate-usb.zip or the GitHub release.**
+**Status: version 1.1.0 on branch `climate-presets` (not merged): presets now also set the steering-wheel heat, eco mode, climate off/auto/manual, temperature, fan, A/C, airflow and sync, with a dropdown editor. Release v1.0.0 (seat buttons, outside temperature and presets of the seats) was the previous public release.**
 Built, not yet tried on the car. The owner's on-car checklist is
-[docs/testing/2026-10-30-presets.md](docs/testing/2026-10-30-presets.md). Earlier checklists:
+[docs/testing/2026-10-31-climate-presets.md](docs/testing/2026-10-31-climate-presets.md). Earlier checklists:
+[presets of the seats (v1.0.0)](docs/testing/2026-10-30-presets.md),
 [version 1](docs/testing/2026-10-30-version-1.md),
 [test build 2](docs/testing/2026-10-30-test-build-2.md),
 [test build 1](docs/testing/2026-10-30-test-build-1.md).
