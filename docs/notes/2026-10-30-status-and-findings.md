@@ -44,10 +44,10 @@ The owner approved this command for the sending build:
 
 ## Climate preset commands (2026-10-31)
 
-**Status: awaiting the owner's approval.** Written from captures 1 and 2 of the stock controls on
-the owner's car (2026-10-31; analyses in `private/work/climate-research/`). The owner chose to
-approve this write-up instead of a log-only first build. Until the owner approves it here, no
-build sends these.
+**Status: approved by the owner (2026-10-31), all items as listed below.** Written from
+captures 1 and 2 of the stock controls on the owner's car (2026-10-31; analyses in
+`private/work/climate-research/`). The owner chose to approve this write-up instead of a log-only
+first build, so the next build sends these.
 
 - **Caller:** our app `hkgclimate.app` (an ordinary app uid), only in response to a tap on a
   preset. Stock callers seen: the climate app (DATC and steering wheel) and Vehicle Settings,

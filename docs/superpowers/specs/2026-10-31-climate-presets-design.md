@@ -54,8 +54,8 @@ using exactly the commands the stock screen was seen sending on the owner's car.
 - **Approval:** the rules in `CLAUDE.md`. The steering-wheel, climate, fan and eco commands
   below are new: the owner approves the write-up (service, method, values, caller uid) before
   any build sends them. The owner chose (2026-10-31) to approve the write-up from the two
-  captures instead of a log-only first build, so once approved, the next build sends them. The
-  record and its status are in `docs/notes/2026-10-30-status-and-findings.md`, "Climate
+  captures instead of a log-only first build, and approved it the same day, so the next build
+  sends them. The record is in `docs/notes/2026-10-30-status-and-findings.md`, "Climate
   preset commands". The seat commands are already approved and keep sending.
 - **Stock services only:** `DATCManager` via `VehicleInfoManager.getInstance(ctx).getService(...)`
   (as the outside temperature does today) and `USMManager` (as the seats do), from our app
