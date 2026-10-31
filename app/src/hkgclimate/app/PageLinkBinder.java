@@ -19,7 +19,8 @@ import java.util.Set;
 /**
  * The service side of the page protocol (see PageLink). Binder calls arrive on binder threads and
  * are posted to the main looper, where the core and the subscriber list live. Only the panel app
- * (uid 1000) and our own uid may call.
+ * (uid 1000) and our own uid may call. Taps (seat, swap, ×, preset) are oneway and carry a request
+ * id; the core ignores an id it has seen.
  */
 final class PageLinkBinder extends Binder {
     /** The raw car values for the settings screen. */
@@ -65,6 +66,8 @@ final class PageLinkBinder extends Binder {
     // main thread only
     private final ArrayList<Subscriber> subscribers = new ArrayList<Subscriber>();
     private boolean closed;
+    // main thread: run after the page state or the subscriber list may have changed
+    private Runnable onChange;
     // binder threads; guarded by itself
     private final Set<Integer> refusedUids = new HashSet<Integer>();
 
@@ -78,8 +81,34 @@ final class PageLinkBinder extends Binder {
         this.afterSend = afterSend;
         attachInterface(null, PageLink.DESCRIPTOR);
         core.setListener(new Runnable() {
-            @Override public void run() { broadcast(); }
+            @Override public void run() {
+                broadcast();
+                changed();
+            }
         });
+    }
+
+    /**
+     * Main thread: r runs after every core change (whether or not a page is subscribed) and after
+     * a page subscribes or goes away (the service starts or stops its highlight check). May be null.
+     */
+    void setOnChange(Runnable r) {
+        onChange = r;
+    }
+
+    /** Main thread: at least one page is subscribed. */
+    boolean hasSubscribers() {
+        return !closed && !subscribers.isEmpty();
+    }
+
+    private void changed() {
+        Runnable r = onChange;
+        if (r == null) return;
+        try {
+            r.run();
+        } catch (Throwable t) {
+            Log.w(TAG, "page change callback failed", t);
+        }
     }
 
     /** Main thread: stop listening to the core and let go of every subscriber. */
@@ -133,6 +162,28 @@ final class PageLinkBinder extends Binder {
                     done(reply, flags);
                     return true;
                 }
+                case PageLink.TX_SEAT_SWAP:
+                case PageLink.TX_SEAT_OFF: {
+                    data.enforceInterface(PageLink.DESCRIPTOR);
+                    int seatIndex = data.readInt();
+                    final long id = data.readLong();
+                    final boolean off = code == PageLink.TX_SEAT_OFF;
+                    Seat[] seats = Seat.values();
+                    if (seatIndex < 0 || seatIndex >= seats.length) {
+                        Log.w(TAG, (off ? "off" : "swap") + " for an unknown seat " + seatIndex + " ignored");
+                        done(reply, flags);
+                        return true;
+                    }
+                    final Seat seat = seats[seatIndex];
+                    handler.post(new Runnable() {
+                        @Override public void run() {
+                            if (off) offTap(seat, id);
+                            else swapTap(seat, id);
+                        }
+                    });
+                    done(reply, flags);
+                    return true;
+                }
                 case PageLink.TX_PRESET: {
                     data.enforceInterface(PageLink.DESCRIPTOR);
                     final int index = data.readInt();
@@ -175,6 +226,27 @@ final class PageLinkBinder extends Binder {
         }
     }
 
+    /**
+     * Main thread: the seat's × (turn it off). The core gates it like a seat tap and sends through
+     * the same commander; a send gets the same bookkeeping as a seat tap.
+     */
+    private void offTap(Seat seat, long id) {
+        try {
+            if (core.onSeatOff(seat, id)) sent(-1, 1);
+        } catch (Throwable t) {
+            Log.w(TAG, "seat off failed", t);
+        }
+    }
+
+    /** Main thread: the seat's swap (flip an off seat's next-tap mode). Sends nothing. */
+    private void swapTap(Seat seat, long id) {
+        try {
+            core.onSeatSwap(seat, id);
+        } catch (Throwable t) {
+            Log.w(TAG, "seat swap failed", t);
+        }
+    }
+
     /** Main thread: one preset tap. The core ignores a bad slot or an id it has seen. */
     private void presetTap(int index, long id) {
         try {
@@ -211,6 +283,7 @@ final class PageLinkBinder extends Binder {
             cb.linkToDeath(s, 0);
             subscribers.add(s);
             send(s, currentState());
+            changed();
         } catch (Throwable t) {
             Log.w(TAG, "subscribe failed", t);
         }
@@ -229,6 +302,7 @@ final class PageLinkBinder extends Binder {
         } catch (Throwable t) {
             // already dead: nothing to unlink
         }
+        changed();
     }
 
     private Bundle currentState() {

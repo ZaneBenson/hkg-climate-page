@@ -252,6 +252,23 @@ public class DATCManager {
 JAVA
 javac --release 8 -cp "$ANDROID_JAR" -d "$ST/so" "$ST/s/com/hkmc/usm/Seat.java" \
     "$ST/s/com/hkmc/usm/USMManager.java" "$ST/s/com/hkmc/datc/DATCManager.java" > /dev/null 2>&1
+# scratch copies of our own core types for the version 1.2 fences (seat off), compiled next to
+# the stubs so a scratch hkgclimate.app class can name them; never in the repo or the APK
+mkdir -p "$ST/s/hkgclimate/core"
+cat > "$ST/s/hkgclimate/core/SeatCommander.java" <<'JAVA'
+package hkgclimate.core;
+public interface SeatCommander { void set(Object seat, int value); }
+JAVA
+cat > "$ST/s/hkgclimate/core/CheckedSeatSender.java" <<'JAVA'
+package hkgclimate.core;
+public class CheckedSeatSender implements SeatCommander { public void set(Object seat, int value) { } }
+JAVA
+cat > "$ST/s/hkgclimate/core/ClimateCore.java" <<'JAVA'
+package hkgclimate.core;
+public class ClimateCore { public boolean onSeatOff(Object seat, long id) { return false; } }
+JAVA
+javac --release 8 -d "$ST/so" "$ST/s/hkgclimate/core/SeatCommander.java" \
+    "$ST/s/hkgclimate/core/CheckedSeatSender.java" "$ST/s/hkgclimate/core/ClimateCore.java" > /dev/null 2>&1
 # scratch_dex <name> <file base name> <java source>: compiles one source against the scratch
 # stubs, dexes it and writes its dexdump -d listing to $ST/<name>/code.txt (empty on any failure)
 scratch_dex() {
@@ -462,8 +479,8 @@ check "self-test: the stock-setter check flags another class calling DatcClimate
     only_flags "$ST/stocksend/code.txt" 'hkgclimate.app.Other.go:' "$STOCK_FROM" $STOCK_REFS
 
 check "package is hkgclimate.app" grep -q "^package: name='hkgclimate.app'" "$TMP/badging"
-check "versionName is 1.1.0" grep -q "versionName='1.1.0'" "$TMP/badging"
-check "versionCode is 5" grep -q "versionCode='5'" "$TMP/badging"
+check "versionName is 1.2.0" grep -q "versionName='1.2.0'" "$TMP/badging"
+check "versionCode is 6" grep -q "versionCode='6'" "$TMP/badging"
 # the approval flow is gone: no commander class, no dialog, no preference key
 check "dex has no TestModeCommander class" sh -c "! grep -q 'Lhkgclimate/app/TestModeCommander;' $TMP/dex.txt"
 # the one dialog is the settings screen's "Delete preset?" confirm; nothing else shows one
@@ -475,6 +492,7 @@ check "self-test: dex_has_string finds a string the dex holds" dex_has_string "$
 check "sdkVersion is 19" grep -q "^sdkVersion:'19'" "$TMP/badging"
 check "automotive library is not required" grep -q "^uses-library-not-required:'automotive'" "$TMP/badging"
 check "WRITE_SETTINGS is requested" grep -q "uses-permission: name='android.permission.WRITE_SETTINGS'" "$TMP/badging"
+check "GET_TASKS is requested" grep -q "uses-permission: name='android.permission.GET_TASKS'" "$TMP/badging"
 check "launcher activity is SettingsActivity" grep -q "launchable-activity: name='hkgclimate.app.SettingsActivity'" "$TMP/badging"
 check "apk has classes.dex" grep -qx 'classes.dex' "$TMP/entries"
 check "apk signature verifies (v1, min sdk 19)" "$BUILD_TOOLS/apksigner" verify --min-sdk-version 19 "$APK"
@@ -683,6 +701,68 @@ check "self-test: method_has_ref sees afterSend writing lastSend" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.afterSend:' 'iput-object.*ClimateService;\.lastSend:'
 check "preset taps reach no stock-call class directly" \
     method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.presetTap:' 'CabinCalls\|DatcClimateCalls\|CheckedCabinSender'
+
+# version 1.2: seat swap and off from the page, the applied-preset highlight
+check "PageLinkBinder serves seat off through ClimateCore.onSeatOff" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.offTap:' 'Lhkgclimate/core/ClimateCore;\.onSeatOff:'
+check "PageLinkBinder.offTap runs the send bookkeeping (sent), like a seat tap" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.offTap:' 'PageLinkBinder;\.sent:'
+check "PageLinkBinder serves swap through ClimateCore.onSeatSwap" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.swapTap:' 'Lhkgclimate/core/ClimateCore;\.onSeatSwap:'
+check "PageLinkBinder.swapTap runs no send bookkeeping (a swap sends nothing)" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.swapTap:' 'PageLinkBinder;\.sent:'
+check "seat off and swap reach no sender or stock-call class directly" \
+    sh -c "! awk -v a='] hkgclimate.app.PageLinkBinder.offTap:' -v b='] hkgclimate.app.PageLinkBinder.swapTap:' 'index(\$0, a) || index(\$0, b) { on = 1; next } on && /\\|\\[/ { on = 0 } on' $TMP/dexcode.txt | grep -q 'SeatCommander\|CheckedSeatSender\|UsmSeatCalls\|UsmCalls\|CabinCalls\|DatcClimateCalls\|CheckedCabinSender'"
+check "ClimateCore.onSeatOff is called only from PageLinkBinder.offTap" \
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.app.PageLinkBinder.offTap:' 'Lhkgclimate/core/ClimateCore;.onSeatOff:'
+check "SeatCommander.set is called only from ClimateCore (seat tap, seat off, a preset's seats)" \
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.core.ClimateCore.' 'Lhkgclimate/core/SeatCommander;.set:'
+check "CheckedSeatSender.set is called only from the ClimateService's SeatCommander" \
+    refs_only_in "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService$' 'Lhkgclimate/core/CheckedSeatSender;.set:'
+scratch_dex offok PageLinkBinder 'package hkgclimate.app; class PageLinkBinder { hkgclimate.core.ClimateCore c; void offTap() { c.onSeatOff(null, 1L); } }'
+scratch_dex offout PageLinkBinder 'package hkgclimate.app; class PageLinkBinder { hkgclimate.core.ClimateCore c; void offTap() { c.onSeatOff(null, 1L); } } class Other { void go(hkgclimate.core.ClimateCore c) { c.onSeatOff(null, 2L); } }'
+scratch_dex cmdok ClimateCore 'package hkgclimate.core; class ClimateCore { SeatCommander c; boolean onSeatOff(Object s, long id) { c.set(s, 2); return true; } }'
+scratch_dex cmdout PageLinkBinder 'package hkgclimate.app; class PageLinkBinder { void offTap(hkgclimate.core.SeatCommander c) { c.set(null, 2); } }'
+scratch_dex senderok ClimateService 'package hkgclimate.app; class ClimateService { hkgclimate.core.CheckedSeatSender s; Object c = new Object() { void set() { s.set(null, 2); } }; }'
+scratch_dex senderout ClimateService 'package hkgclimate.app; class ClimateService { hkgclimate.core.CheckedSeatSender s; Object c = new Object() { void set() { s.set(null, 2); } }; } class PageLinkBinder { void offTap(hkgclimate.core.CheckedSeatSender s) { s.set(null, 2); } }'
+check "self-test: the seat-off check passes onSeatOff called only from PageLinkBinder.offTap" \
+    only_passes "$ST/offok/code.txt" 'ClimateCore;\.onSeatOff:' 'hkgclimate.app.PageLinkBinder.offTap:' 'Lhkgclimate/core/ClimateCore;.onSeatOff:'
+check "self-test: the seat-off check flags another class calling onSeatOff" \
+    only_flags "$ST/offout/code.txt" 'ClimateCore;\.onSeatOff:' 'hkgclimate.app.PageLinkBinder.offTap:' 'Lhkgclimate/core/ClimateCore;.onSeatOff:'
+check "self-test: the commander check passes SeatCommander.set called from ClimateCore" \
+    only_passes "$ST/cmdok/code.txt" 'SeatCommander;\.set:' 'hkgclimate.core.ClimateCore.' 'Lhkgclimate/core/SeatCommander;.set:'
+check "self-test: the commander check flags PageLinkBinder calling SeatCommander.set" \
+    only_flags "$ST/cmdout/code.txt" 'SeatCommander;\.set:' 'hkgclimate.core.ClimateCore.' 'Lhkgclimate/core/SeatCommander;.set:'
+check "self-test: the sender check passes CheckedSeatSender.set called from a ClimateService inner class" \
+    only_passes "$ST/senderok/code.txt" 'CheckedSeatSender;\.set:' 'hkgclimate.app.ClimateService$' 'Lhkgclimate/core/CheckedSeatSender;.set:'
+check "self-test: the sender check flags PageLinkBinder calling CheckedSeatSender.set" \
+    only_flags "$ST/senderout/code.txt" 'CheckedSeatSender;\.set:' 'hkgclimate.app.ClimateService$' 'Lhkgclimate/core/CheckedSeatSender;.set:'
+check "PageStates puts the highlight key (presetActive)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageStates.toBundle:' '"presetActive"'
+check "PageStates puts the swap key (seatSwap)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageStates.toBundle:' '"seatSwap"'
+check "PageStates puts the off key (seatOff)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PageStates.toBundle:' '"seatOff"'
+check "the highlight check reads the cabin through CabinStateReader" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.highlightCheck:' 'Lhkgclimate/app/CabinStateReader;\.read:'
+check "the highlight check gives the reading to ClimateCore.onHighlightCheck" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.highlightCheck:' 'Lhkgclimate/core/ClimateCore;\.onHighlightCheck:'
+check "the highlight check uses the core's clock (SystemClock.elapsedRealtime)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.highlightCheck:' 'Landroid/os/SystemClock;\.elapsedRealtime:'
+check "the highlight check sends nothing (no sender, runner start or tap)" \
+    method_lacks_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.highlightCheck:' 'CheckedSeatSender\|CheckedCabinSender\|SeatCommander\|PresetRunner;\.start:\|ClimateCore;\.onTap\|ClimateCore;\.onPresetTap\|ClimateCore;\.onSeatOff\|ClimateCore;\.onSeatSwap'
+check "the highlight poll runs only with a page subscribed (PageLinkBinder.hasSubscribers)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.updateHighlightPoll:' 'PageLinkBinder;\.hasSubscribers:'
+check "the highlight poll runs only with a preset active (ClimateCore.activePreset)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.updateHighlightPoll:' 'Lhkgclimate/core/ClimateCore;\.activePreset:'
+check "the highlight poll is posted to the main looper's Handler" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.updateHighlightPoll:' 'Landroid/os/Handler;\.postDelayed:'
+check "the highlight poll is removed when it is not wanted" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.updateHighlightPoll:' 'Landroid/os/Handler;\.removeCallbacks:'
+check "onDestroy removes the highlight poll" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onDestroy:' 'iget-object.*ClimateService;\.highlightTick:'
+check "self-test: method_has_ref sees onDestroy removing the watch check (the poll check above can see one)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.ClimateService.onDestroy:' 'iget-object.*ClimateService;\.watchCheck:'
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS check(s) failed"; exit 1; fi
 echo "all checks passed"

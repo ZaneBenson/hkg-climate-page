@@ -9,6 +9,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
+import hkgclimate.core.CabinState;
 import hkgclimate.core.CheckedCabinSender;
 import hkgclimate.core.CheckedSeatSender;
 import hkgclimate.core.ClimateCore;
@@ -32,7 +33,14 @@ import java.util.List;
  * and climate commands through the CheckedCabinSender (StockCabinCalls: UsmSeatCalls and
  * DatcClimateCalls), one step at a time on the main looper. Nothing here sends on its own: no send
  * at start, on a settings change or as a retry. A seat send the car does not follow is reported
- * (SendWatch), not resent; the runner reports its own items.
+ * (SendWatch), not resent; the runner reports its own items. The seat's × goes the same way as a
+ * seat tap (ClimateCore.onSeatOff, the CheckedSeatSender); swap sends nothing.
+ *
+ * The applied-preset highlight: while a page is subscribed and a preset is highlighted, every
+ * ClimateCore.HIGHLIGHT_POLL_MS the cabin, wheel and eco are read (CabinStateReader, main thread)
+ * and given to ClimateCore.onHighlightCheck with SystemClock.elapsedRealtime, the clock the core
+ * times its seat grace with. The check stops when the page goes, the highlight clears, or the
+ * service is destroyed. It only reads.
  */
 public class ClimateService extends Service {
     private static final String TAG = CarLink.TAG;
@@ -51,6 +59,16 @@ public class ClimateService extends Service {
     };
     private CheckedSeatSender sender;
     private PresetRunner runner;
+    private CabinStateReader cabinReader;
+    private final Runnable highlightTick = new Runnable() {
+        @Override public void run() {
+            highlightPosted = false;
+            highlightCheck();
+            updateHighlightPoll();
+        }
+    };
+    // main thread: highlightTick is posted
+    private boolean highlightPosted;
     // main thread: the presets as given to the core, to look up a tapped slot
     private List<Preset> presets = new ArrayList<Preset>();
     // main thread: the sender's last result or the latest "no change" text, whichever came last
@@ -128,7 +146,8 @@ public class ClimateService extends Service {
             };
             CheckedCabinSender cabin = new CheckedCabinSender(
                     new StockCabinCalls(new DatcClimateCalls(this), usm), runLog);
-            runner = new PresetRunner(cabin, new CabinStateReader(this, usm), new MainScheduler(), runLog);
+            cabinReader = new CabinStateReader(this, usm);
+            runner = new PresetRunner(cabin, cabinReader, new MainScheduler(), runLog);
             core = new ClimateCore(send, prefs.getSwitchTempF(), runner, new Clock() {
                 @Override public long now() { return SystemClock.elapsedRealtime(); }
             });
@@ -153,6 +172,9 @@ public class ClimateService extends Service {
             });
             car.setOnDebugChange(new Runnable() {
                 @Override public void run() { binder.onDebugChanged(); }
+            });
+            binder.setOnChange(new Runnable() {
+                @Override public void run() { updateHighlightPoll(); }
             });
             prefs.register(prefListener);
             car.start();
@@ -250,6 +272,45 @@ public class ClimateService extends Service {
         }
     }
 
+    /**
+     * Main thread: starts the highlight check when a page is subscribed and a preset is highlighted
+     * and it is not already posted; removes it otherwise (and once the service is destroyed).
+     */
+    private void updateHighlightPoll() {
+        try {
+            PageLinkBinder b = binder;
+            ClimateCore c = core;
+            boolean want = !destroyed && b != null && c != null && b.hasSubscribers()
+                    && c.activePreset() >= 0;
+            if (want) {
+                if (!highlightPosted) {
+                    highlightPosted = handler.postDelayed(highlightTick, ClimateCore.HIGHLIGHT_POLL_MS);
+                }
+            } else if (highlightPosted) {
+                handler.removeCallbacks(highlightTick);
+                highlightPosted = false;
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "updating the highlight check failed", t);
+        }
+    }
+
+    /**
+     * Main thread, every HIGHLIGHT_POLL_MS while wanted: one cabin reading to the core's highlight
+     * check. Skipped while the preset runner is busy (the core ignores readings during the run).
+     */
+    private void highlightCheck() {
+        try {
+            if (destroyed || core == null || cabinReader == null || core.activePreset() < 0) return;
+            if (binder == null || !binder.hasSubscribers()) return;
+            if (runner != null && runner.busy()) return;
+            CabinState s = cabinReader.read();
+            core.onHighlightCheck(s, SystemClock.elapsedRealtime());
+        } catch (Throwable t) {
+            Log.w(TAG, "the highlight check failed", t);
+        }
+    }
+
     private void debugChanged() {
         PageLinkBinder b = binder;
         if (b != null) b.onDebugChanged();
@@ -326,6 +387,8 @@ public class ClimateService extends Service {
     public void onDestroy() {
         destroyed = true;
         handler.removeCallbacks(watchCheck);
+        handler.removeCallbacks(highlightTick);
+        highlightPosted = false;
         try {
             if (prefs != null) prefs.unregister(prefListener);
             if (keeper != null) keeper.close();
