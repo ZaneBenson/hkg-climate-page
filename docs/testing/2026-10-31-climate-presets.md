@@ -19,13 +19,17 @@ open settings, or as a retry: only a tap on a preset (or a seat button) sends.
 
 1. Install 1.1.0 from the combined stick. If the install says there isn't enough space on
    /system, restart the head unit and plug the stick in again (the update has to finish
-   removing the old build first). Check that your old presets are still there.
-2. In the Climate Page settings, add or edit a preset and look at the editor: every item is a
-   dropdown. Set Climate to Auto: fan, A/C and airflow grey out. Set it to Off: temperature,
-   fan, A/C, airflow and sync grey out too. Seats, steering wheel and eco are never greyed.
-   Tap Save: the editor closes. If it says "could not save: ...", write down the full text,
-   leave the editor, and run the kit at once.
-3. With the car on, build two presets:
+   removing the old build first). Check that your old presets are still there (their new
+   items read "Leave as is").
+2. The app holds four presets, and this test uses all four. In the Climate Page settings,
+   delete the old presets you don't need (Delete asks first) so that all four slots are free.
+   Then tap to add a preset and look at the editor: every item is a dropdown. Set Climate to
+   Auto: fan, A/C and airflow grey out. Set it to Off: temperature, fan, A/C, airflow and
+   sync grey out too. Seats, steering wheel and eco are never greyed. Tap Save: the editor
+   closes. If it says "could not save: ...", write down the full text, leave the editor, and
+   run the kit at once. This first preset becomes "Cold" in the next step: edit it, don't add
+   another.
+3. With the car on, make two presets (slots 1 and 2):
    - "Cold": driver and passenger seat heat high, steering wheel on, climate Auto,
      temperature 70 °F.
    - "Hot": driver and passenger seat cool high, climate Manual, A/C on, fan 6, airflow face,
@@ -39,11 +43,12 @@ open settings, or as a retry: only a tap on a preset (or a seat button) sends.
    or that did not reach its target.
 6. Tap "Hot": A/C on, airflow face, fan 6, temperature 68 °F, seats to cool high; the car
    leaves auto.
-7. Make a preset with Climate: Off (and, for example, the seats set to Off and the wheel
-   off). Tap it: the climate turns off, and the seats and wheel still apply. Nothing wakes the
-   climate again.
-8. Eco: make a preset with Eco on and one with Eco off. Tap each: the eco mode follows, and
-   it matches what Vehicle Settings shows.
+7. Add a third preset (slot 3), "Off": Climate: Off, seats Off, steering wheel off. Tap it:
+   the climate turns off, and the seats and wheel still apply. Nothing wakes the climate
+   again.
+8. Eco, in the fourth slot: add "Eco" with Eco on and nothing else, and tap it. Then edit
+   the same preset to Eco off (don't add another) and tap it again. After each tap the eco
+   mode follows, and it matches what Vehicle Settings shows.
 9. Stop the capture tool (second run), then run the kit from Manager ("Run USB NEMESIS.sh" on
    the combined stick) before you edit anything or restart. The kit keeps only about the last minute of the
    Android log, and a restart wipes it. Send the `CAPTURE` folder and the `HKGCLIMATE`
