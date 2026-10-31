@@ -16,9 +16,9 @@ import java.util.Random;
 
 /**
  * The page's side of the PageLink protocol: binds our app's service, subscribes with a callback
- * Binder, and sends seat and preset taps. State is touched on the main thread only; start() and stop() may
- * be called from any thread and hop to the main thread. Nothing here blocks: every call to the
- * service is oneway.
+ * Binder, and sends seat, preset, swap and off taps. State is touched on the main thread only;
+ * start() and stop() may be called from any thread and hop to the main thread. Nothing here
+ * blocks: every call to the service is oneway.
  */
 final class LinkClient {
     private static final String TAG = ClimatePage.TAG;
@@ -43,7 +43,7 @@ final class LinkClient {
     private boolean started;
     private boolean bound;
     private IBinder service;
-    // request ids for seat taps and preset taps alike, so they stay unique across both
+    // request ids for every kind of request (seat, preset, swap, off), so they stay unique across them
     private long nextTapId = new Random().nextLong();
     // our app's uid, looked up on the main thread before subscribing; -1 if unknown (then every
     // callback is refused). Read on binder threads.
@@ -154,26 +154,30 @@ final class LinkClient {
 
     /** Send a tap for seat 0 (driver) or 1 (passenger), oneway, with a new request id. */
     void tap(int seat) {
-        try {
-            IBinder s = service;
-            if (s == null) return;
-            long id = nextTapId++;
-            Parcel p = Parcel.obtain();
-            try {
-                p.writeInterfaceToken(PageLink.DESCRIPTOR);
-                p.writeInt(seat);
-                p.writeLong(id);
-                s.transact(PageLink.TX_TAP, p, null, IBinder.FLAG_ONEWAY);
-            } finally {
-                p.recycle();
-            }
-        } catch (Throwable t) {
-            Log.e(TAG, "tap failed", t);
-        }
+        request(PageLink.TX_TAP, seat, "tap");
     }
 
-    /** Send a tap for preset slot 0 to 3, oneway, with a new request id. */
+    /** Send a tap for preset slot 0 to 5, oneway, with a new request id. */
     void preset(int index) {
+        request(PageLink.TX_PRESET, index, "preset tap");
+    }
+
+    /** Send a tap on seat 0 or 1's swap sub-button, oneway, with a new request id. */
+    void swap(int seat) {
+        request(PageLink.TX_SEAT_SWAP, seat, "swap tap");
+    }
+
+    /** Send a tap on seat 0 or 1's off (×) sub-button, oneway, with a new request id. */
+    void off(int seat) {
+        request(PageLink.TX_SEAT_OFF, seat, "off tap");
+    }
+
+    /**
+     * One request to the service (in: int value, long requestId), oneway, with a new request id
+     * shared by every kind of request so ids stay unique across them. Does nothing while not
+     * connected. Main thread.
+     */
+    private void request(int code, int value, String what) {
         try {
             IBinder s = service;
             if (s == null) return;
@@ -181,14 +185,14 @@ final class LinkClient {
             Parcel p = Parcel.obtain();
             try {
                 p.writeInterfaceToken(PageLink.DESCRIPTOR);
-                p.writeInt(index);
+                p.writeInt(value);
                 p.writeLong(id);
-                s.transact(PageLink.TX_PRESET, p, null, IBinder.FLAG_ONEWAY);
+                s.transact(code, p, null, IBinder.FLAG_ONEWAY);
             } finally {
                 p.recycle();
             }
         } catch (Throwable t) {
-            Log.e(TAG, "preset tap failed", t);
+            Log.e(TAG, what + " failed", t);
         }
     }
 

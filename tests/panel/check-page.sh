@@ -103,6 +103,27 @@ oneway_report() {
         END { print n + 0, bad + 0 }' "$1"
 }
 
+# callers <dexdump -d listing> <regex>: the method (as dexdump names it, e.g.
+# hkgclimate.page.LinkClient.request:(IIJLjava/lang/String;)V) of every instruction matching regex
+callers() {
+    RE=$2 awk '/\|\[[0-9a-f]+\] / { m = $0; sub(/^.*\|\[[0-9a-f]+\] /, "", m); next }
+         $0 ~ ENVIRON["RE"] { print m }' "$1" | sort -u
+}
+
+# method_body <dexdump -d listing> <method as dexdump names it>: that method's instructions
+method_body() {
+    awk -v want="$2" '/\|\[[0-9a-f]+\] / { m = $0; sub(/^.*\|\[[0-9a-f]+\] /, "", m); next }
+         m == want { print }' "$1"
+}
+
+# sends_code <dexdump -d listing> <method> <code>: the method loads the transaction code and passes
+# it to LinkClient.request (the one place that transacts a request)
+sends_code() {
+    method_body "$1" "$2" > "$TMP/body.txt"
+    grep -q ": const[/0-9a-z]* v[0-9]*, #int $3 " "$TMP/body.txt" \
+        && grep -q 'Lhkgclimate/page/LinkClient;\.request:' "$TMP/body.txt"
+}
+
 has_ref() { grep -q "$2" "$1"; }
 no_output() { [ -z "$("$@")" ]; }
 
@@ -156,6 +177,12 @@ check "self-test: an undeclared inherited member called on this is reported" gre
 check "self-test: allowed inherited members called on this are not reported" \
     sh -c "! grep -q 'LCaller;\.f\$\|LCaller;\.mView' $TMP/st/badinh.txt"
 check "self-test: a transact without FLAG_ONEWAY is counted" test "$(oneway_report "$TMP/st/code.txt")" = "2 1"
+callers "$TMP/st/code.txt" 'IBinder;\.transact:' > "$TMP/st/tx.txt"
+check "self-test: every transact is named by its method" \
+    sh -c "grep -q '^Caller.tapOneway:' $TMP/st/tx.txt && grep -q '^Caller.tapBlocking:' $TMP/st/tx.txt"
+method_body "$TMP/st/code.txt" 'Caller.tapBlocking:(Landroid/os/IBinder;)V' > "$TMP/st/body.txt"
+check "self-test: a method's body is found by its name" grep -q 'const/4 v[0-9]*, #int 0 ' "$TMP/st/body.txt"
+check "self-test: another method's code is not in that body" sh -c "! grep -q '#int 1 ' $TMP/st/body.txt"
 
 check "dex lists classes" grep -q "Class descriptor" "$TMP/dex.txt"
 check "every defined class is under Lhkgclimate/" sh -c "! grep \"Class descriptor\" $TMP/dex.txt | grep -qv \"'Lhkgclimate/\""
@@ -178,8 +205,22 @@ check "the page declares no field named viewId" sh -c "! grep -q 'viewId' $TMP/d
 check "code reaches k.mContext" has_ref "$TMP/dexcode.txt" '\.mContext'
 check "code reads the uiMode of the configuration" has_ref "$TMP/dexcode.txt" 'Landroid/content/res/Configuration;\.uiMode'
 check "code binds the service" has_ref "$TMP/dexcode.txt" 'Landroid/content/Context;\.bindService'
-check "every transact (subscribe and unsubscribe, tap, preset) passes FLAG_ONEWAY" \
-    test "$(oneway_report "$TMP/dexcode.txt")" = "3 0"
+check "every transact (subscribe and unsubscribe, and the one for seat, preset, swap and off requests) passes FLAG_ONEWAY" \
+    test "$(oneway_report "$TMP/dexcode.txt")" = "2 0"
+callers "$TMP/dexcode.txt" 'IBinder;\.transact:' > "$TMP/tx.txt"
+callers "$TMP/dexcode.txt" 'Lhkgclimate/page/LinkClient;\.request:' > "$TMP/req.txt"
+check "the page transacts somewhere" test -s "$TMP/tx.txt"
+check "every transact is in LinkClient" sh -c "! grep -v '^hkgclimate\.page\.LinkClient\.' $TMP/tx.txt"
+check "LinkClient.request transacts" grep -q '^hkgclimate\.page\.LinkClient\.request:' "$TMP/tx.txt"
+# TX_TAP = FIRST_CALL_TRANSACTION + 2 = 3, TX_PRESET = 4, TX_SEAT_SWAP = 5, TX_SEAT_OFF = 6
+check "LinkClient.tap sends TX_TAP (3)" sends_code "$TMP/dexcode.txt" 'hkgclimate.page.LinkClient.tap:(I)V' 3
+check "LinkClient.preset sends TX_PRESET (4)" sends_code "$TMP/dexcode.txt" 'hkgclimate.page.LinkClient.preset:(I)V' 4
+check "LinkClient.swap sends TX_SEAT_SWAP (5)" sends_code "$TMP/dexcode.txt" 'hkgclimate.page.LinkClient.swap:(I)V' 5
+check "LinkClient.off sends TX_SEAT_OFF (6)" sends_code "$TMP/dexcode.txt" 'hkgclimate.page.LinkClient.off:(I)V' 6
+check "only LinkClient calls LinkClient.request" sh -c "! grep -v '^hkgclimate\.page\.LinkClient\.' $TMP/req.txt"
+check "the dex file holds no com.hkmc name (dotted or slashed)" sh -c "! grep -aq 'com[./]hkmc' $DEX"
+check "the page shows no seat names" sh -c "! grep -aq 'Passenger' $DEX"
+check "the page has no Settings text button (the gear replaces it)" sh -c "! grep -q 'Lhkgclimate/page/PageView;\.settings:Landroid/widget/TextView;' $TMP/dexcode.txt"
 
 # ClimatePageFactory.create: the descriptor the smali hook calls
 awk '/Class descriptor/ { cls = $0 } /name *: *.create./ { if (cls ~ /ClimatePageFactory/) f = 1 }
