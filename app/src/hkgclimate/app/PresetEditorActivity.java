@@ -88,14 +88,16 @@ public class PresetEditorActivity extends Activity {
         nameLabel.setPadding(0, dp(24), 0, dp(8));
         root.addView(nameLabel);
         nameField = new EditText(this);
+        nameField.setId(SeatChoices.NAME_FIELD_ID);
         nameField.setSingleLine(true);
         nameField.setTextSize(24);
         nameField.setFilters(new InputFilter[] {new InputFilter.LengthFilter(Preset.MAX_NAME)});
         if (editing != null) nameField.setText(editing.name);
         root.addView(nameField);
 
-        driverGroup = seatGroup(root, "Driver seat", drvOption, editing == null ? Preset.LEAVE : editing.driver);
-        passengerGroup = seatGroup(root, "Passenger seat", astOption,
+        driverGroup = seatGroup(root, "Driver seat", SeatChoices.DRIVER_ID_BASE, drvOption,
+                editing == null ? Preset.LEAVE : editing.driver);
+        passengerGroup = seatGroup(root, "Passenger seat", SeatChoices.PASSENGER_ID_BASE, astOption,
                 editing == null ? Preset.LEAVE : editing.passenger);
 
         error = text("", 20);
@@ -126,11 +128,12 @@ public class PresetEditorActivity extends Activity {
     }
 
     /**
-     * One seat's group of choices (SeatChoices decides which are offered). Each button's id is its
-     * position + 1. The seat's stored choice is always offered and checked, so a seat that is not
+     * One seat's group of choices (SeatChoices decides which are offered). Each button's id is the seat's
+     * id base plus its position (the seats use different bases, so Android's saved view state, which
+     * is keyed by id, cannot mix them up). The seat's stored choice is always offered and checked, so a seat that is not
      * touched keeps its value when the preset is saved.
      */
-    private RadioGroup seatGroup(LinearLayout root, String title, int option, int current) {
+    private RadioGroup seatGroup(LinearLayout root, String title, int idBase, int option, int current) {
         TextView label = text(title, 22);
         label.setPadding(0, dp(24), 0, dp(8));
         root.addView(label);
@@ -139,28 +142,27 @@ public class PresetEditorActivity extends Activity {
         for (int i = 0; i < SeatChoices.LABELS.length; i++) {
             if (!SeatChoices.offered(i, option, current)) continue;
             RadioButton b = new RadioButton(this);
-            b.setId(i + 1);
+            b.setId(SeatChoices.idOf(idBase, i));
             b.setText(SeatChoices.label(i, option));
             b.setTextSize(22);
             g.addView(b);
         }
-        g.check(SeatChoices.positionOf(current) + 1);
+        g.check(SeatChoices.idOf(idBase, SeatChoices.positionOf(current)));
         root.addView(g);
         return g;
     }
 
     /** The value of the choice checked in the group; Leave as is when none is. */
-    private static int chosen(RadioGroup g) {
-        int pos = g.getCheckedRadioButtonId() - 1;
-        return pos >= 0 && pos < SeatChoices.VALUES.length ? SeatChoices.VALUES[pos] : Preset.LEAVE;
+    private static int chosen(RadioGroup g, int idBase) {
+        return SeatChoices.valueOfId(idBase, g.getCheckedRadioButtonId());
     }
 
     /** Checks the input with Preset.check; only a valid preset is stored. The reason shows otherwise. */
     private void save() {
         try {
             String name = nameField.getText().toString();
-            int driver = chosen(driverGroup);
-            int passenger = chosen(passengerGroup);
+            int driver = chosen(driverGroup, SeatChoices.DRIVER_ID_BASE);
+            int passenger = chosen(passengerGroup, SeatChoices.PASSENGER_ID_BASE);
             String reason = Preset.check(name, driver, passenger);
             if (reason != null) {
                 error.setText(reason);

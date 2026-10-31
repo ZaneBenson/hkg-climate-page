@@ -60,4 +60,40 @@ public class SeatChoicesTest {
     public void positionOfANonChoiceIsLeaveAsIs() {
         assertEquals(0, SeatChoices.positionOf(99));
     }
+
+    @Test
+    public void viewIdsOfTheTwoSeatsAndTheNameFieldNeverCollide() {
+        java.util.Set<Integer> seen = new java.util.HashSet<Integer>();
+        for (int base : new int[] {SeatChoices.DRIVER_ID_BASE, SeatChoices.PASSENGER_ID_BASE}) {
+            for (int pos = 0; pos < SeatChoices.VALUES.length; pos++) {
+                assertTrue("duplicate id", seen.add(SeatChoices.idOf(base, pos)));
+            }
+        }
+        assertTrue("name id collides", seen.add(SeatChoices.NAME_FIELD_ID));
+        assertEquals(1, SeatChoices.idOf(SeatChoices.DRIVER_ID_BASE, 0));
+        assertEquals(101, SeatChoices.idOf(SeatChoices.PASSENGER_ID_BASE, 0));
+    }
+
+    @Test
+    public void positionOfIdMapsBackOnlyWithinItsOwnSeat() {
+        for (int base : new int[] {SeatChoices.DRIVER_ID_BASE, SeatChoices.PASSENGER_ID_BASE}) {
+            for (int pos = 0; pos < SeatChoices.VALUES.length; pos++) {
+                assertEquals(pos, SeatChoices.positionOfId(base, SeatChoices.idOf(base, pos)));
+            }
+        }
+        int pass3 = SeatChoices.idOf(SeatChoices.PASSENGER_ID_BASE, 3);
+        assertEquals(-1, SeatChoices.positionOfId(SeatChoices.DRIVER_ID_BASE, pass3));
+        int drv3 = SeatChoices.idOf(SeatChoices.DRIVER_ID_BASE, 3);
+        assertEquals(-1, SeatChoices.positionOfId(SeatChoices.PASSENGER_ID_BASE, drv3));
+        assertEquals(-1, SeatChoices.positionOfId(SeatChoices.DRIVER_ID_BASE, -1));
+        assertEquals(-1, SeatChoices.positionOfId(SeatChoices.DRIVER_ID_BASE, 0));
+        assertEquals(-1, SeatChoices.positionOfId(SeatChoices.DRIVER_ID_BASE, SeatChoices.NAME_FIELD_ID));
+    }
+
+    @Test
+    public void valueOfIdIsLeaveAsIsWhenNothingIsChecked() {
+        assertEquals(Preset.LEAVE, SeatChoices.valueOfId(SeatChoices.DRIVER_ID_BASE, -1));
+        assertEquals(SeatValues.HEAT_HIGH,
+                SeatChoices.valueOfId(SeatChoices.PASSENGER_ID_BASE, SeatChoices.idOf(SeatChoices.PASSENGER_ID_BASE, 2)));
+    }
 }

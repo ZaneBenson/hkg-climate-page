@@ -20,7 +20,7 @@ Ioniq 5 head unit (`NEEV23.USA.0000.V015.012.260507`). Companion documents:
 | Plan 3 (test build 2: approved seat command behind an approval switch) | Installed and tested on the owner's car (2026-10-30): seat taps change both seats through heat and cool. |
 | Plan 4 (version 1: owner's layout changes, taps always send, install message for low /system space) | Built (1.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-version-1.md`. |
 | Plan 5 (version 2: presets of the seat settings, up to 4, applied from the page) | Built (2.0.0), not yet on the car. Checklist: `docs/testing/2026-10-30-presets.md`. |
-| Branches | Everything merged into `main` (2026-10-30). |
+| Branches | Version 1 and presets are built on branches `version-1` and `presets` (stacked), not merged into `main` yet. |
 
 ## Seat command approval (2026-10-30)
 
@@ -33,8 +33,12 @@ The owner approved this command for the sending build:
 - **Caller:** our app `hkgclimate.app` (an ordinary app uid). The stock climate app calls it as
   `android.uid.phone`; whether the service accepts an ordinary uid is untested. If it refuses,
   the fallback is a small NEMESIS helper running as the system uid.
-- **Gate:** one step per tap; nothing is sent at boot or on a state update. Owner removed the
-  approval switch for version 1 (2026-10-30); taps send by default.
+- **Gate:** seat taps send one step per tap. Preset taps set a seat straight to its target
+  (for example 2 to 6, or 8 to 5), at most one command per seat and at most two per tap (driver
+  first, then passenger), all with the approved values above. Nothing is sent at boot or on a
+  state update. Owner removed the approval switch for version 1 (2026-10-30); taps send by
+  default.
+- Preset behaviour awaiting the owner's confirmation (2026-10-30).
 
 ## Design summary
 

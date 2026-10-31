@@ -386,6 +386,10 @@ check "the editor checks a preset with Preset.check before storing it" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.save:' 'Lhkgclimate/core/Preset;\.check'
 check "the editor builds its seat choices with SeatChoices" \
     method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.seatGroup:' 'Lhkgclimate/core/SeatChoices;\.offered'
+check "the editor numbers each seat's buttons from its own id base (SeatChoices.idOf)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.seatGroup:' 'Lhkgclimate/core/SeatChoices;\.idOf'
+check "the editor maps a checked id back with its seat's base (SeatChoices.valueOfId)" \
+    method_has_ref "$TMP/dexcode.txt" 'hkgclimate.app.PresetEditorActivity.chosen:' 'Lhkgclimate/core/SeatChoices;\.valueOfId'
 check "the settings list uses PresetSummary" \
     has_ref "$TMP/dexcode.txt" 'Lhkgclimate/core/PresetSummary;\.of'
 check "ClimateService checks every overdue send (SendWatch.allOverdue)" \
