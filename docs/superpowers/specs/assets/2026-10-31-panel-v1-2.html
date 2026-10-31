@@ -1,0 +1,119 @@
+<h2>Sub-button moved toward the top inner corner</h2>
+<p class="subtitle">The swap / × sub-button now sits near the top inner corner (14 dp from the top and inner edges). The icon keeps its place at the outer edge of the bars, and the icon and bars stay centred vertically.</p>
+
+<style>
+  .hu-wrap { display:flex; gap:32px; flex-wrap:wrap; align-items:flex-start; }
+  .hu-caption { font-size:13px; opacity:.75; margin:6px 0 0; max-width:427px; }
+  .hu-panel { width:427px; height:480px; position:relative; border-radius:6px; overflow:hidden; font-family: Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .hu-panel.day { background:#e9eef1; --t:#62797F; --bg:#e9eef1; --hi:#1F2A30; --fill:rgba(98,121,127,.18); }
+  .hu-panel.night { background:#0f1820; --t:#B6C1C8; --bg:#0f1820; --hi:#FFFFFF; --fill:rgba(182,193,200,.18); }
+  .hu-col { position:absolute; top:8px; left:1.5px; width:424px; }
+  .hu-top { display:flex; align-items:center; margin-bottom:12px; width:384px; }
+  .hu-top .temp { flex:1; font-size:22px; color:var(--t); }
+  .hu-top .gear { width:44px; height:44px; box-sizing:border-box; border:2px solid var(--t); border-radius:8px; display:flex; align-items:center; justify-content:center; margin-left:8px; }
+  .hu-top .gear svg { width:26px; height:26px; fill:var(--t); }
+  .hu-seats { display:flex; margin-bottom:12px; }
+  .hu-seat { width:180px; height:180px; box-sizing:border-box; border:2px solid; border-radius:12px; padding:6px; position:relative; display:flex; flex-direction:column; justify-content:center; color:var(--t); }
+  .hu-seat + .hu-seat { margin-left:24px; }
+  .hu-seat .upper { display:flex; align-items:center; justify-content:space-between; width:116px; margin:0 auto; }
+  .align { position:absolute; top:0; bottom:0; border-left:1px dashed rgba(255,0,80,.5); }
+  .hu-seat.right .upper { flex-direction:row-reverse; }
+  .hu-seat .icon svg { height:56px; width:52px; display:block; }
+  .hu-seat.right .icon svg { transform:scaleX(-1); }
+  .hu-seat.right .sub { right:auto; left:14px; }
+  .hu-seat .upper { justify-content:flex-start; }
+  .hu-seat.right .upper { justify-content:flex-start; }
+  .hu-seat .lower-pad { height:14px; }
+  .hu-seat .sub { position:absolute; top:14px; right:14px; width:52px; height:52px; box-sizing:border-box; border:2px solid var(--t); border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .hu-seat .sub svg { width:30px; height:30px; }
+  .hu-seat .bars { display:flex; gap:4px; margin:22px 0 0; justify-content:center; }
+  .hu-seat .bars span { width:36px; height:9px; background:#62797F; display:block; }
+  .hu-seat .state { font-size:18px; text-align:center; }
+  .hu-row { display:flex; margin-bottom:8px; }
+  .hu-preset { width:180px; height:50px; box-sizing:border-box; border:2px solid var(--t); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--t); }
+  .hu-preset + .hu-preset { margin-left:24px; }
+  .hu-preset.on { border-width:4px; border-color:var(--hi); color:var(--hi); font-weight:700; background:var(--fill); }
+  .heat { border-color:#FF8A00 !important; }
+  .cool { border-color:#2D9CDB !important; }
+  .lit-heat { background:#FF8A00 !important; }
+  .lit-cool { background:#2D9CDB !important; }
+  .notes { max-width:880px; }
+  .notes li { margin:4px 0; }
+</style>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="gear" viewBox="0 0 24 24">
+      <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.3 7.3 0 0 0-1.69-.98l-.38-2.65A.49.49 0 0 0 14 2h-4a.49.49 0 0 0-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.49.49 0 0 0 .12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/>
+    </symbol>
+    <symbol id="carseat" viewBox="0 0 40 52">
+      <rect x="12" y="1" width="16" height="8" rx="3" fill="var(--t)"/>
+      <rect x="7" y="12" width="26" height="27" rx="6" fill="var(--t)"/>
+      <path d="M15.5 19 Q12.5 27 14.5 35 M24.5 19 Q27.5 27 25.5 35" stroke="var(--bg)" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+      <path d="M3 40.5 Q3 37 6.5 37 Q10.5 37 12.5 41 Q20 38.5 27.5 41 Q29.5 37 33.5 37 Q37 37 37 40.5 L37 48.5 Q37 51 34.5 51 L5.5 51 Q3 51 3 48.5 Z" fill="var(--t)" stroke="var(--bg)" stroke-width="2.4"/>
+    </symbol>
+    <symbol id="seat-off" viewBox="0 0 48 52"><path d="M5 38.5 Q5 32.6 10.6 31.9 Q20.5 28.6 30.4 31.1 Q33.6 31.3 34.4 27.8 Q36.4 19.5 37.3 9.2 Q38 3.9 42 4.6 Q46.6 5.6 45.7 10.6 Q45.2 26.5 40.9 39.2 Q39.3 45 32.5 45 L10.2 45 Q5 45 5 40.6 Z" fill="var(--t)"/></symbol>
+    <symbol id="seat-heat" viewBox="0 0 48 52"><path d="M5 38.5 Q5 32.6 10.6 31.9 Q20.5 28.6 30.4 31.1 Q33.6 31.3 34.4 27.8 Q36.4 19.5 37.3 9.2 Q38 3.9 42 4.6 Q46.6 5.6 45.7 10.6 Q45.2 26.5 40.9 39.2 Q39.3 45 32.5 45 L10.2 45 Q5 45 5 40.6 Z" fill="var(--t)"/><path d="M11 28.5 q-2.6 -3.2 0 -6.4 q2.6 -3.2 0 -6.4 L11 12.5" fill="none" stroke="var(--t)" stroke-width="2.3" stroke-linecap="round"/><path d="M8 13.5 L11 8.5 L14 13.5 Z" fill="var(--t)"/><path d="M18 28.5 q-2.6 -3.2 0 -6.4 q2.6 -3.2 0 -6.4 L18 12.5" fill="none" stroke="var(--t)" stroke-width="2.3" stroke-linecap="round"/><path d="M15 13.5 L18 8.5 L21 13.5 Z" fill="var(--t)"/><path d="M25 28.5 q-2.6 -3.2 0 -6.4 q2.6 -3.2 0 -6.4 L25 12.5" fill="none" stroke="var(--t)" stroke-width="2.3" stroke-linecap="round"/><path d="M22 13.5 L25 8.5 L28 13.5 Z" fill="var(--t)"/></symbol>
+    <symbol id="seat-cool" viewBox="0 0 48 52"><path d="M5 38.5 Q5 32.6 10.6 31.9 Q20.5 28.6 30.4 31.1 Q33.6 31.3 34.4 27.8 Q36.4 19.5 37.3 9.2 Q38 3.9 42 4.6 Q46.6 5.6 45.7 10.6 Q45.2 26.5 40.9 39.2 Q39.3 45 32.5 45 L10.2 45 Q5 45 5 40.6 Z" fill="var(--t)"/><g transform="translate(17 17)"><ellipse cx="0" cy="-5" rx="3.1" ry="5" transform="rotate(0) rotate(18)" fill="var(--t)"/><ellipse cx="0" cy="-5" rx="3.1" ry="5" transform="rotate(90) rotate(18)" fill="var(--t)"/><ellipse cx="0" cy="-5" rx="3.1" ry="5" transform="rotate(180) rotate(18)" fill="var(--t)"/><ellipse cx="0" cy="-5" rx="3.1" ry="5" transform="rotate(270) rotate(18)" fill="var(--t)"/><circle r="2" fill="var(--bg)"/></g></symbol>
+    <!-- swap: two arrows chasing round a circle -->
+    <symbol id="swap" viewBox="0 0 24 24">
+      <path d="M19.5 9.5 A8 8 0 0 0 5.2 7.6" fill="none" stroke="var(--t)" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M4.5 14.5 A8 8 0 0 0 18.8 16.4" fill="none" stroke="var(--t)" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M2.6 4.6 L5 8.4 L8.9 6.2 Z" fill="var(--t)"/>
+      <path d="M21.4 19.4 L19 15.6 L15.1 17.8 Z" fill="var(--t)"/>
+    </symbol>
+    <!-- off: an x (the circle is the sub-button's own outline) -->
+    <symbol id="xoff" viewBox="0 0 24 24">
+      <path d="M7 7 L17 17 M17 7 L7 17" stroke="var(--t)" stroke-width="2.8" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="hu-wrap">
+  <div>
+    <div class="hu-panel night"><div class="hu-col">
+      <div class="hu-top"><div class="temp">Outside 41 °F</div><div class="gear"><svg><use href="#gear"/></svg></div></div>
+      <div class="hu-seats">
+        <div class="hu-seat heat">
+          <div class="upper"><div class="icon"><svg><use href="#seat-heat"/></svg></div><div class="sub"><svg><use href="#xoff"/></svg></div></div>
+          <div class="bars"><span class="lit-heat"></span><span class="lit-heat"></span><span class="lit-heat"></span></div></div>
+        <div class="hu-seat right heat">
+          <div class="upper"><div class="icon"><svg><use href="#seat-heat"/></svg></div><div class="sub"><svg><use href="#swap"/></svg></div></div>
+          <div class="bars"><span></span><span></span><span></span></div></div>
+      </div>
+      <div class="hu-row"><div class="hu-preset on">Cold</div><div class="hu-preset">Hot</div></div>
+      <div class="hu-row"><div class="hu-preset">Off</div><div class="hu-preset">Eco</div></div>
+      <div class="hu-row"><div class="hu-preset">Defrost</div><div class="hu-preset">Commute</div></div>
+    </div></div>
+    <p class="hu-caption">Night, six presets saved. Driver heating high: its sub-button is × (turn off). Passenger off but in heat mode (orange): arrows icon; swap would flip it to cool, and the icon to the fan.</p>
+  </div>
+  <div>
+    <div class="hu-panel day"><div class="hu-col">
+      <div class="hu-top"><div class="temp">Outside 78 °F</div><div class="gear"><svg><use href="#gear"/></svg></div></div>
+      <div class="hu-seats">
+        <div class="hu-seat cool">
+          <div class="upper"><div class="icon"><svg><use href="#seat-cool"/></svg></div><div class="sub"><svg><use href="#xoff"/></svg></div></div>
+          <div class="bars"><span class="lit-cool"></span><span class="lit-cool"></span><span></span></div></div>
+        <div class="hu-seat right cool">
+          <div class="upper"><div class="icon"><svg><use href="#seat-cool"/></svg></div><div class="sub"><svg><use href="#swap"/></svg></div></div>
+          <div class="bars"><span></span><span></span><span></span></div></div>
+      </div>
+      <div class="hu-row"><div class="hu-preset">Cold</div><div class="hu-preset on">Hot</div></div>
+      <div class="hu-row"><div class="hu-preset">Off</div></div>
+    </div></div>
+    <p class="hu-caption">Day, three presets saved: only three buttons. Driver cooling mid (× turns it off). Passenger off but in cool mode (blue): fan icon; swap would make it heat.</p>
+  </div>
+</div>
+
+<div class="section notes">
+  <h3>The seat icon follows the button's mode</h3>
+  <ul>
+    <li><b>Heat mode</b> (orange border): seat with three rising arrows, whether the seat is heating or off.</li>
+    <li><b>Cool mode</b> (blue border): seat with a fan, whether the seat is cooling or off.</li>
+    <li><b>Unavailable</b> (grey border): the plain seat.</li>
+    <li>Swap flips the mode, so it changes both the border and the icon; the level bars show whether the seat is actually on.</li>
+    <li>Seat shape: cushion and backrest slightly bulged.</li>
+    <li>No state text under the bars.</li>
+  </ul>
+  <p class="subtitle">Say what else to change, or that it's done.</p>
+</div>
