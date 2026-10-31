@@ -2,8 +2,9 @@ hkg-climate capture - records the Android log while you use the climate controls
 
 READ ONLY: it changes nothing on the car and sends no vehicle commands.
 
-1. Copy NEMESIS.sh and this file to the root of a USB stick (exFAT/FAT32). Do not
-   put a NEMESIS.data on it (the capture runs only from NEMESIS Manager).
+1. Copy NEMESIS.sh and this file to the root of a USB stick (exFAT/FAT32) with at
+   least 200 MB free (a 30-minute log is about 135 MB). Do not put a NEMESIS.data
+   on it (the capture runs only from NEMESIS Manager).
 2. Car on (ready to drive), stick in. Open NEMESIS Manager and choose
    "Run USB NEMESIS.sh". A message says "capture 1 started".
 3. Use the stock controls one at a time, a few seconds apart, and write down what

@@ -7,8 +7,8 @@ command still needs your approval before any build sends it.
 
 ## Setup
 
-1. Unzip `hkg-climate-capture.zip` onto the root of a USB stick. Use a stick **without** a
-   `NEMESIS.data` (not the install stick).
+1. Unzip `hkg-climate-capture.zip` onto the root of a USB stick with at least 200 MB free. Use
+   a stick **without** a `NEMESIS.data` (not the install stick).
 2. Car on (ready to drive), stick in. In NEMESIS Manager, choose **Run USB NEMESIS.sh**. Wait
    for "capture 1 started".
 3. Write down the head unit's clock time.

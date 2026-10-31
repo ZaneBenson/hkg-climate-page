@@ -1,15 +1,13 @@
 #!/bin/sh
-# logcat -d ...: print and exit. logcat ... -f <file> ...: write a line, then run until killed
+# logcat -d ...: print and exit. Otherwise print a line, then run until killed
 # (FAKE_LOGCAT_DIES=1: exit at once, as if the log had been stopped)
-f=
-while [ $# -gt 0 ]; do
-    case "$1" in
+for a in "$@"; do
+    case "$a" in
         -d) echo "10-30 08:32:45.190  1060  1060 D ClimateManager: fake log line"; exit 0 ;;
-        -f) f=$2; shift ;;
+        -f|-r|-n) echo "logcat stub: unexpected $a (the capture writes one plain file)" >&2; exit 2 ;;
     esac
-    shift
 done
-echo "10-30 08:32:45.190  1060  1060 D DATCService: setFrontClimateControl ---> flag: 30, set1: 14" > "$f"
+echo "10-30 08:32:45.190  1060  1060 D DATCService: setFrontClimateControl ---> flag: 30, set1: 14"
 [ -n "$FAKE_LOGCAT_DIES" ] && exit 0
 trap 'exit 0' TERM
 while :; do sleep 1; done

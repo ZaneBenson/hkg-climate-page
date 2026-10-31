@@ -12,7 +12,8 @@
 # CAPTURE/<n>/
 #   session.txt       kit version, product, start and stop times, whether the log ran the
 #                     whole time, the file list
-#   logcat.txt[.N]    the Android log from about a minute before the start until the stop:
+#   logcat.txt        the Android log from about a minute before the start until the stop
+#                     (one file, about 75 KB a second on the owner's car: ~135 MB for 30 min):
 #                     can hold phone and contact names, Bluetooth addresses and other ids
 #   logcat-end.txt    only if the background log had ended early: the last minute
 #   state-start.txt   climate and steering-wheel state reads at the start (stock services'
@@ -130,7 +131,9 @@ state "$S/state-start.txt"
 # itself after MAX_SECONDS in case the second run never comes. The timer checks once a second
 # and ends as soon as the log has, so it never outlives it (a signal alone did not stop it
 # under mksh) and never kills a later process that got the log's old pid.
-( trap '' HUP; exec logcat -v threadtime -f "$S/logcat.txt" -r 8192 -n 8 ) > /dev/null 2>&1 &
+# One plain file: logcat's own rotation (-f -r -n) kept far less than asked on the car and
+# dropped the start of the first capture.
+( trap '' HUP; exec logcat -v threadtime ) > "$S/logcat.txt" 2>&1 &
 LPID=$!
 (
     trap '' HUP
