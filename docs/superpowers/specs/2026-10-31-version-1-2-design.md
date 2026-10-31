@@ -109,6 +109,20 @@ panel a cleaner look the owner designed.
   greys the passenger temperature.
 - Six presets in Settings (Add disabled at six).
 
+## Settings app and editor fit beside the side panel (owner, 2026-10-31)
+
+The settings screen and the preset editor are laid out by default for the area left of the
+right-hand split panel, so they're usable with the panel open:
+
+- The screen is 1920 × 720 px at density 240 (1280 × 480 dp); the right panel is 640 px (427 dp)
+  wide, leaving 1280 px (853 dp) on the left.
+- All content sits in one column no wider than 800 dp, aligned to the left edge with 24 dp
+  padding (*designer's call* on the numbers), so nothing is ever under the panel, whether or
+  not it is shown. Rows that are side by side today (labels and buttons, the preset list's Edit /
+  Delete / Up / Down) wrap or shrink to fit the column.
+- Dialogs (the dropdown lists, the delete confirmation) are no wider than the column and appear
+  within the left area.
+
 ## Applying a preset (changes from 1.1)
 
 - Order as 1.1, with "temperature" split: driver steps, then passenger steps.
